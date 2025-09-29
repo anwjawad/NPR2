@@ -1,244 +1,156 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="midnight">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Palliative Rounds — Sheets-only</title>
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" href="data:,">
+  <title>Palliative Rounds — Sheets-only, Modernized</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div id="app">
-
-    <!-- Sidebar -->
-    <aside id="sidebar">
-      <div class="brand">
-        <div class="logo">PR</div>
-        <div class="titles">
-          <div class="title">Palliative Rounds</div>
-          <div class="subtitle">Sheets-only, Modernized</div>
+    <!-- Aside -->
+    <aside class="aside">
+      <div class="brand" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div style="width:34px;height:34px;border-radius:9px;background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:900;">PR</div>
+        <div>
+          <div style="font-weight:800;">Palliative Rounds</div>
+          <div class="small muted">Sheets-only, Modernized</div>
         </div>
       </div>
 
-      <div class="section">
-        <div class="section-title">SECTIONS</div>
-        <div id="sections-list" class="sections"></div>
-        <button id="btn-add-section" class="btn w100">+ Add Section</button>
+      <h4>SECTIONS</h4>
+      <div id="sections-list" style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="pill active">Default</button>
       </div>
+      <button id="btn-add-section" class="btn" style="margin-top:10px">+ Add Section</button>
 
-      <div class="section">
-        <div class="section-title">ACTIONS</div>
-        <button id="btn-new-patient" class="btn btn-primary w100">+ New Patient</button>
-        <button id="btn-import" class="btn w100">Import CSV</button>
-        <button id="btn-export-template" class="btn w100">Export CSV Template</button>
-        <button id="btn-delete-all-pats" class="btn btn-danger w100">Delete All Patients in Section</button>
-        <button id="btn-refresh" class="btn w100">Refresh</button>
-      </div>
+      <h4>ACTIONS</h4>
+      <button id="btn-new-patient" class="btn primary">+ New Patient</button>
+      <button id="btn-import" class="btn">Import CSV</button>
+      <button id="btn-export-template" class="btn">Export CSV Template</button>
+      <button id="btn-delete-all-pats" class="btn danger">Delete All Patients in Section</button>
+      <button id="btn-refresh" class="btn">Refresh</button>
 
-      <div class="section small">
-        <div class="section-title">SYNC</div>
-        <div id="sync-indicator">
-          <span class="dot dot-green"></span> <span id="sync-text">Idle</span><br/>
-          <span class="muted">Mode: Apps Script Bridge</span>
-        </div>
+      <h4>SYNC</h4>
+      <div class="small" style="display:flex;align-items:center;gap:8px;">
+        <span style="width:8px;height:8px;background:#24d08b;border-radius:50%;display:inline-block;"></span>
+        <span>Idle</span>
       </div>
+      <div class="muted small">Mode: Apps Script Bridge</div>
 
-      <div class="section">
-        <button id="open-settings" class="btn w100" type="button">Settings</button>
-      </div>
+      <button id="open-settings" class="btn" style="margin-top:14px;">Settings</button>
     </aside>
 
     <!-- Main -->
-    <main id="main">
-      <!-- Topbar -->
-      <div id="topbar">
-        <input id="search" type="search" placeholder="Search patients…" />
-        <div id="section-ops">
-          <span id="active-section-label">Section: <strong id="active-section-name">Default</strong></span>
-          <button id="btn-rename-section" class="btn btn-ghost">Rename Section</button>
-          <button id="btn-delete-section" class="btn btn-danger btn-ghost">Delete Section</button>
-        </div>
+    <main class="main">
+      <div class="topbar">
+        <div class="search"><input id="search" placeholder="Search patients…" /></div>
+        <div class="muted small">Section: <span id="active-section-name">Default</span></div>
+        <button id="btn-rename-section" class="pill">Rename Section</button>
+        <button id="btn-delete-section" class="pill danger">Delete Section</button>
       </div>
 
-      <div id="columns">
-        <!-- Patients list -->
-        <section id="patients-col">
-          <div class="card">
-            <div class="card-head">
-              <div class="card-title">Patients</div>
-              <div class="tabs small">
-                <button data-filter="all" class="tab active">All</button>
-                <button data-filter="open" class="tab">Open</button>
-                <button data-filter="done" class="tab">Done</button>
-              </div>
-            </div>
-            <div id="patients-list" class="list"></div>
+      <div class="panel" id="patients-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div style="font-weight:900;letter-spacing:.3px;">Patients</div>
+          <div class="tabs">
+            <div class="tab active" data-filter="all">All</div>
+            <div class="tab" data-filter="open">Open</div>
+            <div class="tab" data-filter="done">Done</div>
           </div>
-        </section>
-
-        <!-- Dashboard column not used (dashboard is in modal) -->
-        <section id="dashboard-col" style="display:none;"></section>
+        </div>
+        <div id="patients-list"></div>
       </div>
     </main>
-
   </div>
 
-  <!-- Toast root -->
-  <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
-
-  <!-- Import CSV modal -->
-  <div id="import-modal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3>Import CSV</h3>
-        <button class="icon-btn" data-close-modal="import-modal" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body">
-        <input id="csv-file-input" type="file" accept=".csv,text/csv" />
-        <div id="csv-preview" style="margin-top:12px;"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" data-close-modal="import-modal">Cancel</button>
-        <button id="btn-import-confirm" class="btn btn-primary">Import</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Settings modal -->
-  <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3>Settings</h3>
-        <button class="icon-btn" data-close-modal="settings-modal" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body">
-        <label class="field">
-          <span class="label">Spreadsheet ID</span>
-          <input id="set-spreadsheet-id" type="text" placeholder="1AbCdEFGhIJKL..." />
-        </label>
-        <label class="field">
-          <span class="label">Apps Script Web App URL (Bridge)</span>
-          <input id="set-bridge-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" />
-        </label>
-        <label class="field">
-          <span class="label">AI Proxy Endpoint (optional)</span>
-          <input id="set-ai-endpoint" type="url" placeholder="https://your-proxy.example/summarize" />
-        </label>
-        <div class="muted small">Leave OAuth off. All writes go through the Apps Script Bridge.</div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" data-close-modal="settings-modal">Close</button>
-        <button id="btn-settings-save" class="btn btn-primary">Save</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Patient Dashboard modal (fullscreen) -->
-  <div id="patient-modal" class="modal hidden" role="dialog" aria-modal="true" data-code="">
-    <div class="modal-card modal-card-full">
-      <div class="modal-header">
-        <h3 id="patient-modal-title">Patient Dashboard</h3>
-        <button class="icon-btn" data-close-modal="patient-modal" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body modal-body-pad">
-        <div class="card">
-          <div class="card-head">
-            <div id="dashboard-title" class="card-title">Dashboard</div>
-            <div class="actions-row">
-              <button id="btn-mark-done" class="btn btn-ghost">Mark Done</button>
-              <button id="btn-delete-patient" class="btn btn-danger btn-ghost">Delete Patient</button>
-              <button id="btn-duplicate" class="btn btn-ghost">Duplicate</button>
-              <button id="btn-ai" class="btn btn-primary">AI Summary</button>
-            </div>
-          </div>
-
-          <div id="dashboard-panel" data-empty="true">
-            <div class="empty">
-              <div class="dots"></div>
-              <div class="empty-text">Select a patient</div>
-              <div class="empty-sub">Pick a patient on the left to view details, symptoms, and labs.</div>
-            </div>
-
-            <!-- BIO -->
-            <div class="section-block">
-              <div class="block-head">
-                <div class="block-title">Bio</div>
-                <div class="muted small" id="bio-updated"></div>
-              </div>
-              <div id="bio-grid" class="grid grid-2"></div>
-            </div>
-
-            <!-- HPI -->
-            <div class="section-block">
-              <div class="block-head"><div class="block-title">HPI</div></div>
-              <div class="grid grid-2">
-                <label class="field">
-                  <span class="label">Cause of admission</span>
-                  <textarea id="hpi-diagnosis" rows="2" placeholder="Cause of admission…"></textarea>
-                </label>
-                <label class="field">
-                  <span class="label">HPI Initial</span>
-                  <textarea id="hpi-initial" rows="2" placeholder="Initial HPI…"></textarea>
-                </label>
-                <label class="field">
-                  <span class="label">HPI Previous</span>
-                  <textarea id="hpi-previous" rows="2" placeholder="Previous HPI…"></textarea>
-                </label>
-                <label class="field">
-                  <span class="label">HPI Current</span>
-                  <textarea id="hpi-current" rows="2" placeholder="Current HPI…"></textarea>
-                </label>
-              </div>
-            </div>
-
-            <div class="section-block">
-              <div class="grid grid-2">
-                <label class="field">
-                  <span class="label">Patient Assessment</span>
-                  <textarea id="patient-assessment" rows="3" placeholder="Assessment…"></textarea>
-                </label>
-                <label class="field">
-                  <span class="label">Medication List</span>
-                  <textarea id="medication-list" rows="3" placeholder="Medications…"></textarea>
-                </label>
-              </div>
-              <label class="field">
-                <span class="label">Latest Notes</span>
-                <textarea id="latest-notes" rows="3" placeholder="Notes…"></textarea>
-              </label>
-            </div>
-
-            <!-- Unified Patient Symptoms -->
-            <div class="section-block">
-              <div class="block-head">
-                <div class="block-title">Patient’s Symptoms</div>
-                <div class="muted small" id="symptoms-updated"></div>
-              </div>
-              <div id="symptoms-grid" class="score-grid"></div>
-            </div>
-
-            <!-- Labs -->
-            <div class="section-block">
-              <div class="block-head">
-                <div class="block-title">Labs</div>
-                <div class="muted small" id="labs-updated"></div>
-              </div>
-              <div id="labs-summary" class="chips"></div>
-              <div id="labs-grid" class="labs-grid"></div>
-            </div>
-          </div>
+  <!-- Patient Modal (موجود مسبقًا — نُبقيه كما لديك) -->
+  <div class="modal hidden" id="patient-modal" data-code="">
+    <div class="box">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div id="patient-modal-title" style="font-weight:900;">Patient</div>
+        <div style="display:flex;gap:8px;">
+          <button id="btn-mark-done" class="pill">Toggle Done</button>
+          <button id="btn-delete-patient" class="pill danger">Delete</button>
+          <button class="pill" data-close-modal="patient-modal">Close</button>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" data-close-modal="patient-modal">Close</button>
+      <!-- لوحتك الحالية للـDashboard تُحقن هنا من dashboard.js -->
+      <div id="dashboard-panel" data-empty="true"></div>
+    </div>
+  </div>
+
+  <!-- Import Modal -->
+  <div class="modal hidden" id="import-modal">
+    <div class="box">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-weight:900;">Import CSV</div>
+        <button class="pill" data-close-modal="import-modal">Close</button>
+      </div>
+      <div class="field">
+        <div class="label">Choose CSV/TSV file</div>
+        <input type="file" id="csv-file-input" accept=".csv,.tsv,.txt" />
+      </div>
+      <div class="field">
+        <div class="label">Preview</div>
+        <div id="csv-preview" style="max-height:60vh;overflow:auto;white-space:nowrap;border:1px solid var(--border);border-radius:12px;"></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+        <button id="btn-import-confirm" class="btn primary">Import</button>
       </div>
     </div>
   </div>
 
-  <!-- Entry point: App.start -->
-  <script type="module">
-    import { App } from './js/app.js';
-    App.start();
-  </script>
+  <!-- Settings Modal -->
+  <div class="modal hidden" id="settings-modal">
+    <div class="box">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-weight:900;">Settings</div>
+        <button class="pill" data-close-modal="settings-modal">Close</button>
+      </div>
+      <div class="settings-grid">
+        <div class="field">
+          <div class="label">Spreadsheet ID</div>
+          <input id="set-spreadsheet-id" />
+        </div>
+        <div class="field">
+          <div class="label">Apps Script Exec URL</div>
+          <input id="set-bridge-url" />
+        </div>
+        <div class="field">
+          <div class="label">AI Endpoint (optional)</div>
+          <input id="set-ai-endpoint" />
+        </div>
+
+        <div class="field">
+          <div class="label">Theme</div>
+          <div class="theme-swatches">
+            <label class="theme-swatch swatch-midnight">
+              <input type="radio" name="theme" id="set-theme-midnight" value="midnight" />
+              <span class="name">Midnight</span>
+            </label>
+            <label class="theme-swatch swatch-ocean">
+              <input type="radio" name="theme" id="set-theme-ocean" value="ocean" />
+              <span class="name">Ocean</span>
+            </label>
+            <label class="theme-swatch swatch-ivory">
+              <input type="radio" name="theme" id="set-theme-ivory" value="ivory" />
+              <span class="name" style="color:#111;text-shadow:none;">Ivory</span>
+            </label>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button id="btn-settings-save" class="btn primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <!-- Scripts -->
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
