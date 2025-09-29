@@ -1,0 +1,271 @@
+/* =========================
+   Palliative Rounds — Styles
+   Modern dark UI, compact grids
+   ========================= */
+
+:root{
+  --bg:#0f1220;
+  --bg-2:#111528;
+  --bg-3:#151a33;
+  --panel:#141932;
+  --card:#161c38;
+  --card-2:#1a2145;
+  --text:#e9ecff;
+  --muted:#9aa3c7;
+  --accent:#7c9cff;
+  --accent-2:#9ab0ff;
+  --primary:#6c8dff;
+  --danger:#ff5a7a;
+  --success:#42c989;
+  --warn:#ffbe55;
+  --chip:#202752;
+  --border:rgba(255,255,255,.08);
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --radius:14px;
+  --radius-sm:10px;
+  --radius-xs:8px;
+  --gap:14px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background: radial-gradient(1200px 600px at 70% -10%, rgba(124,156,255,.12), transparent 60%) , var(--bg);
+  color:var(--text);
+  font: 15px/1.55 Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+#app{display:flex; min-height:100vh}
+
+/* ============ Sidebar ============ */
+#sidebar{
+  width:300px; min-width:280px;
+  background:linear-gradient(180deg, var(--bg-2), var(--bg-3));
+  border-right:1px solid var(--border);
+  padding:18px 16px;
+  position:sticky; top:0; height:100vh; overflow:auto;
+}
+.brand{display:flex; align-items:center; gap:12px; margin-bottom:18px}
+.brand .logo{
+  width:40px; height:40px; border-radius:10px;
+  background:linear-gradient(135deg, var(--accent), #5a7bff);
+  display:grid; place-items:center; font-weight:800; color:white;
+}
+.brand .title{font-weight:700}
+.brand .subtitle{color:var(--muted); font-size:12px}
+
+.section{margin:18px 0}
+.section-title{color:var(--muted); font-size:12px; letter-spacing:.5px; margin-bottom:8px}
+.sections{display:flex; flex-direction:column; gap:8px}
+
+.pill{
+  background:var(--chip); color:var(--text);
+  border:1px solid var(--border);
+  padding:10px 12px; border-radius:10px; cursor:pointer;
+  text-align:left; transition:.2s border, .2s background;
+}
+.pill:hover{border-color:#2a3572}
+.pill.active{background:#222a5a}
+
+.settings-link{
+  display:inline-block; margin-top:12px; color:var(--accent-2);
+  cursor:pointer; text-decoration:underline dotted;
+}
+
+/* ============ Main / Columns ============ */
+#main{flex:1; display:flex; flex-direction:column}
+#topbar{
+  display:flex; align-items:center; gap:16px;
+  padding:14px 18px; border-bottom:1px solid var(--border);
+  background:rgba(20,26,50,.5); backdrop-filter:saturate(120%) blur(6px);
+  position:sticky; top:0; z-index:50;
+}
+#topbar input[type="search"]{
+  flex:1; background:var(--panel); color:var(--text);
+  border:1px solid var(--border); border-radius:12px; padding:10px 12px;
+}
+#section-ops .btn{margin-left:8px}
+
+#columns{display:grid; grid-template-columns: 370px 1fr; gap:16px; padding:16px}
+
+/* ============ Cards ============ */
+.card{
+  background: linear-gradient(180deg, var(--card), var(--card-2));
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+.card .card-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px}
+.card-title{font-weight:700; font-size:16px}
+.actions-row{display:flex; gap:8px; flex-wrap:wrap}
+
+/* ============ Buttons / Chips ============ */
+.btn{
+  background:#222956; border:1px solid var(--border); color:var(--text);
+  padding:9px 12px; border-radius:10px; cursor:pointer; transition:.2s transform, .2s background, .2s border;
+}
+.btn:hover{border-color:#2b3470}
+.btn:active{transform:translateY(1px)}
+.btn-ghost{background:transparent}
+.btn-primary{background:linear-gradient(180deg, var(--primary), #5676ff); border-color:transparent; color:white}
+.btn-primary:hover{filter:brightness(1.05)}
+.btn-danger{background:#3b0f1a; border-color:#5b1122; color:#ffcdd6}
+.w100{width:100%}
+
+.chip{display:inline-flex; align-items:center; background:var(--chip); border:1px solid var(--border); color:var(--text);
+  padding:4px 8px; border-radius:999px; font-size:12px; margin-right:6px}
+.chip.done{background:#1a3a2c; border-color:#2a6b52; color:#b6ffe2}
+
+.dot{display:inline-block; width:8px; height:8px; border-radius:50%}
+.dot-green{background:var(--success)}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.mono{font-family:var(--mono)}
+
+/* ============ Patients list ============ */
+#patients-col .list{max-height: calc(100vh - 210px); overflow:auto; padding-right:4px}
+#patients-col .row{
+  display:grid; grid-template-columns:1fr auto; gap:10px;
+  padding:10px; margin:8px 0; background:#141a36; border:1px solid var(--border);
+  border-radius:12px; cursor:pointer; transition:.15s border, .15s background;
+}
+#patients-col .row:hover{border-color:#2a3572; background:#182044}
+.row-title{font-weight:700}
+.row-sub{color:var(--muted); font-size:12px}
+.row-tag{margin-top:6px; display:inline-block; background:#212956; padding:3px 8px; border-radius:999px; font-size:12px; border:1px solid var(--border)}
+.row-code{font-family:var(--mono); color:#b7c4ff; align-self:center}
+
+/* ============ Dashboard ============ */
+#dashboard-panel[data-empty="true"] .section-block{display:none}
+#dashboard-panel .empty{
+  display:grid; place-items:center; text-align:center; padding:40px 10px; color:var(--muted)
+}
+#dashboard-panel .dots:before{
+  content:""; width:64px; height:12px; border-radius:999px;
+  background: radial-gradient(circle at 10% 50%, #85a2ff 15%, transparent 16%) ,
+              radial-gradient(circle at 40% 50%, #72ffe1 15%, transparent 16) ,
+              radial-gradient(circle at 70% 50%, #ff7ea2 15%, transparent 16);
+  display:block; filter:blur(.6px); opacity:.8; margin-bottom:8px;
+}
+
+.section-block{margin:12px 0}
+.block-head{display:flex; align-items:center; gap:12px; margin-bottom:8px}
+.block-title{font-weight:700}
+
+.grid{display:grid; gap:10px}
+.grid-2{grid-template-columns:repeat(2, minmax(0,1fr))}
+@media (max-width: 980px){ .grid-2{grid-template-columns:1fr} }
+
+.field{display:flex; flex-direction:column; gap:6px}
+.field .label{color:var(--muted); font-size:12px}
+.field input, .field textarea{
+  background:#101633; color:var(--text);
+  border:1px solid var(--border); border-radius:10px; padding:10px 12px; width:100%;
+}
+.field textarea{resize:vertical}
+
+/* Bio grid fields */
+#bio-grid .field{background:#12183a; border:1px solid var(--border); border-radius:10px; padding:10px}
+
+/* ============ Score grids (ESAS/CTCAE) ============ */
+.score-grid{
+  display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px;
+}
+@media (min-width:1200px){ .score-grid{grid-template-columns: repeat(3, minmax(0,1fr));} }
+
+.metric{
+  background:#12183a; border:1px solid var(--border); border-radius:12px; padding:10px;
+}
+.metric .name{font-weight:600; margin-bottom:6px}
+.metric .scale{display:flex; flex-wrap:wrap; gap:6px}
+.metric .scale .btn{
+  padding:6px 9px; border-radius:8px; background:#0f1534; border-color:#2a335f; min-width:34px; text-align:center
+}
+.metric .scale .btn.active{background:#1f2b66; border-color:#5063c9}
+.metric .note{margin-top:8px}
+.metric .note input{
+  width:100%; background:#0f1534; border:1px dashed #2e3a7a; padding:8px 10px; border-radius:8px; color:var(--text)
+}
+
+/* ============ Labs grid ============ */
+.labs-grid{
+  display:grid; gap:10px;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+}
+@media (min-width:1200px){ .labs-grid{grid-template-columns: repeat(3, minmax(0,1fr));} }
+.lab{
+  background:#11173a; border:1px solid var(--border); border-radius:12px; padding:10px;
+}
+.lab-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px}
+.lab-name{font-weight:600}
+.lab input{
+  width:100%; background:#0f1430; border:1px solid #2b3362; border-radius:8px; padding:8px 10px; color:var(--text)
+}
+
+/* Abnormal coloring */
+.lab.abnormal-high{border-color:#6b0b22; box-shadow:0 0 0 1px rgba(255,0,55,.25) inset}
+.lab.abnormal-high .lab-name{color:#ff9fb0; font-weight:700}
+.lab.abnormal-low{border-color:#0b3f6b; box-shadow:0 0 0 1px rgba(80,180,255,.25) inset}
+.lab.abnormal-low .lab-name{color:#9fd2ff; font-weight:700}
+
+/* Labs summary chips */
+.chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px}
+.chips .chip.high{background:#341323; border-color:#5e1733; color:#ff9fb0}
+.chips .chip.low{background:#0d2a44; border-color:#10476f; color:#bfe0ff}
+
+/* ============ Tabs inside cards ============ */
+.tabs{display:flex; gap:8px}
+.tab{
+  background:#1b224a; border:1px solid var(--border); color:var(--text);
+  border-radius:999px; padding:6px 10px; cursor:pointer; font-size:13px;
+}
+.tab.active{background:#26306a; border-color:#3a4aa6}
+.tabpanes{margin-top:10px}
+.tabpane{display:none}
+.tabpane.active{display:block}
+
+/* ============ Toasts ============ */
+#toast-root{
+  position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:2000;
+}
+.toast{
+  background:#1a2046; border:1px solid var(--border); color:var(--text);
+  padding:10px 12px; border-radius:10px; box-shadow: var(--shadow); max-width:360px
+}
+.toast.success{background:#102a20; border-color:#245a43; color:#ccffe9}
+.toast.danger{background:#3b101a; border-color:#7a1e34; color:#ffd6de}
+.toast.warn{background:#3a2d10; border-color:#7a6321; color:#ffe7b4}
+
+/* ============ Modal ============ */
+.modal{
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(6,8,16,.55); z-index:1500;
+}
+.modal.hidden{display:none}
+.modal-card{
+  width:min(720px, 92vw); background:var(--panel); border:1px solid var(--border); border-radius:14px;
+  box-shadow: var(--shadow); overflow:hidden;
+}
+.modal-header, .modal-footer{padding:12px 14px; background:#12183a; border-bottom:1px solid var(--border)}
+.modal-footer{border-top:1px solid var(--border); border-bottom:none; display:flex; gap:8px; justify-content:flex-end}
+.modal-body{padding:14px}
+.icon-btn{background:#1b214a; color:#cde; border:1px solid var(--border); border-radius:8px; padding:6px 10px; cursor:pointer}
+
+/* ============ Misc ============ */
+#patients-col .tabs .tab.active,
+#patients-col .tabs .tab:hover{background:#243062}
+.scroll{overflow:auto}
+
+/* Focus styles for a11y */
+:focus{outline:2px solid rgba(124,156,255,.45); outline-offset:2px}
+
+/* Responsive tweaks */
+@media (max-width: 1100px){
+  #columns{grid-template-columns: 1fr}
+  #sidebar{position:static; height:auto}
+}

@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Palliative Rounds — Sheets-only</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="logo">PR</div>
+        <div class="titles">
+          <div class="title">Palliative Rounds</div>
+          <div class="subtitle">Sheets-only, Modernized</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">SECTIONS</div>
+        <div id="sections-list" class="sections"></div>
+        <button id="btn-add-section" class="btn w100">+ Add Section</button>
+      </div>
+
+      <div class="section">
+        <div class="section-title">ACTIONS</div>
+        <button id="btn-new-patient" class="btn btn-primary w100">+ New Patient</button>
+        <button id="btn-import" class="btn w100">Import CSV</button>
+        <button id="btn-refresh" class="btn w100">Refresh</button>
+      </div>
+
+      <div class="section small">
+        <div class="section-title">SYNC</div>
+        <div id="sync-indicator">
+          <span class="dot dot-green"></span> <span id="sync-text">Idle</span><br/>
+          <span class="muted">Mode: Apps Script Bridge</span>
+        </div>
+      </div>
+
+      <a id="open-settings" class="settings-link">Settings</a>
+    </aside>
+
+    <!-- Main -->
+    <main id="main">
+      <!-- Topbar -->
+      <div id="topbar">
+        <input id="search" type="search" placeholder="Search patients…" />
+        <div id="section-ops">
+          <span id="active-section-label">Section: <strong id="active-section-name">Default</strong></span>
+          <button id="btn-rename-section" class="btn btn-ghost">Rename Section</button>
+          <button id="btn-delete-section" class="btn btn-danger btn-ghost">Delete Section</button>
+        </div>
+      </div>
+
+      <div id="columns">
+        <!-- Patients list -->
+        <section id="patients-col">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Patients</div>
+              <div class="tabs small">
+                <button data-filter="all" class="tab active">All</button>
+                <button data-filter="open" class="tab">Open</button>
+                <button data-filter="done" class="tab">Done</button>
+              </div>
+            </div>
+            <div id="patients-list" class="list"></div>
+          </div>
+        </section>
+
+        <!-- Dashboard -->
+        <section id="dashboard-col">
+          <div class="card">
+            <div class="card-head">
+              <div id="dashboard-title" class="card-title">Dashboard</div>
+              <div class="actions-row">
+                <button id="btn-mark-done" class="btn btn-ghost">Mark Done</button>
+                <button id="btn-delete-patient" class="btn btn-danger btn-ghost">Delete Patient</button>
+                <button id="btn-duplicate" class="btn btn-ghost">Duplicate</button>
+                <button id="btn-ai" class="btn btn-primary">AI Summary</button>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div id="dashboard-panel" data-empty="true">
+              <div class="empty">
+                <div class="dots"></div>
+                <div class="empty-text">Select a patient</div>
+                <div class="empty-sub">Pick a patient on the left to view details, scores, and labs.</div>
+              </div>
+
+              <!-- BIO -->
+              <div class="section-block">
+                <div class="block-head">
+                  <div class="block-title">Bio</div>
+                  <div class="muted small" id="bio-updated"></div>
+                </div>
+                <div id="bio-grid" class="grid grid-2"></div>
+              </div>
+
+              <!-- HPI / Texts -->
+              <div class="section-block">
+                <div class="block-head"><div class="block-title">HPI</div></div>
+                <div class="grid grid-2">
+                  <label class="field">
+                    <span class="label">HPI Diagnosis</span>
+                    <textarea id="hpi-diagnosis" rows="2" placeholder="Diagnosis…"></textarea>
+                  </label>
+                  <label class="field">
+                    <span class="label">HPI Initial</span>
+                    <textarea id="hpi-initial" rows="2" placeholder="Initial HPI…"></textarea>
+                  </label>
+                  <label class="field">
+                    <span class="label">HPI Previous</span>
+                    <textarea id="hpi-previous" rows="2" placeholder="Previous HPI…"></textarea>
+                  </label>
+                  <label class="field">
+                    <span class="label">HPI Current</span>
+                    <textarea id="hpi-current" rows="2" placeholder="Current HPI…"></textarea>
+                  </label>
+                </div>
+              </div>
+
+              <div class="section-block">
+                <div class="grid grid-2">
+                  <label class="field">
+                    <span class="label">Patient Assessment</span>
+                    <textarea id="patient-assessment" rows="3" placeholder="Assessment…"></textarea>
+                  </label>
+                  <label class="field">
+                    <span class="label">Medication List</span>
+                    <textarea id="medication-list" rows="3" placeholder="Medications…"></textarea>
+                  </label>
+                </div>
+                <label class="field">
+                  <span class="label">Latest Notes</span>
+                  <textarea id="latest-notes" rows="3" placeholder="Notes…"></textarea>
+                </label>
+              </div>
+
+              <!-- ESAS -->
+              <div class="section-block">
+                <div class="block-head">
+                  <div class="block-title">ESAS (0–10)</div>
+                  <div class="muted small" id="esas-updated"></div>
+                </div>
+                <div id="esas-grid" class="score-grid"></div>
+              </div>
+
+              <!-- CTCAE -->
+              <div class="section-block">
+                <div class="block-head">
+                  <div class="block-title">CTCAE (0–4)</div>
+                  <div class="muted small" id="ctcae-updated"></div>
+                </div>
+                <div class="ctcae-controls">
+                  <label><input id="ctcae-enabled" type="checkbox" /> Enabled</label>
+                  <label class="field" style="margin-left:auto;max-width:420px;">
+                    <span class="label">Other</span>
+                    <input id="ctcae-other" type="text" placeholder="Other symptoms…" />
+                  </label>
+                </div>
+                <div id="ctcae-grid" class="score-grid"></div>
+              </div>
+
+              <!-- Labs -->
+              <div class="section-block">
+                <div class="block-head">
+                  <div class="block-title">Labs</div>
+                  <div class="muted small" id="labs-updated"></div>
+                </div>
+                <div id="labs-summary" class="chips"></div>
+                <div id="labs-grid" class="labs-grid"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Toast root -->
+  <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Import CSV modal -->
+  <div id="import-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Import CSV</h3>
+        <button class="icon-btn" data-close-modal="import-modal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <input id="csv-file-input" type="file" accept=".csv,text/csv" />
+        <div id="csv-preview" style="margin-top:12px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal="import-modal">Cancel</button>
+        <button id="btn-import-confirm" class="btn btn-primary">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Settings</h3>
+        <button class="icon-btn" data-close-modal="settings-modal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span class="label">Spreadsheet ID</span>
+          <input id="set-spreadsheet-id" type="text" placeholder="1AbCdEFGhIJKL..." />
+        </label>
+        <label class="field">
+          <span class="label">Apps Script Web App URL (Bridge)</span>
+          <input id="set-bridge-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" />
+        </label>
+        <label class="field">
+          <span class="label">AI Proxy Endpoint (optional)</span>
+          <input id="set-ai-endpoint" type="url" placeholder="https://your-proxy.example/summarize" />
+        </label>
+        <div class="muted small">Leave OAuth off. All writes go through the Apps Script Bridge.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal="settings-modal">Close</button>
+        <button id="btn-settings-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script type="module">
+    import { UI } from './js/ui.js';
+    import { Utils } from './js/utils.js';
+    import { Sheets } from './js/sheets.js';
+    import { Patients } from './js/patients.js';
+    import { ESAS } from './js/esas.js';
+    import { CTCAE } from './js/ctcae.js';
+    import { Labs } from './js/labs.js';
+    import { Dashboard } from './js/dashboard.js';
+    import { Importer } from './js/importer.js';
+    import { AIModule } from './js/ai.js';
+
+    // --- Simple event bus ---
+    const Bus = {
+      _handlers: {},
+      on(evt, fn){ (this._handlers[evt] ||= []).push(fn); },
+      emit(evt, data){ (this._handlers[evt]||[]).forEach(fn=>fn(data)); }
+    };
+
+    // --- Global state ---
+    const State = {
+      config: {
+        spreadsheetId: localStorage.getItem('pr.sheet') || '',
+        bridgeUrl: localStorage.getItem('pr.bridge') || '',
+        aiEndpoint: localStorage.getItem('pr.ai') || '',
+        useOAuth: false
+      },
+      sections: ['Default'],
+      activeSection: 'Default',
+      patients: [],
+      esas: [],
+      ctcae: [],
+      labs: []
+    };
+
+    // --- Init modules ---
+    UI.init(Bus);
+    Patients.init(Bus, State);
+    ESAS.init(Bus, State);
+    CTCAE.init(Bus, State);
+    Labs.init(Bus, State);
+    Dashboard.init(Bus, State);
+    Importer.init(Bus, State);
+    AIModule.init(Bus, State);
+
+    // --- UI helpers ---
+    const $ = (s)=>document.querySelector(s);
+    const listEl = $('#patients-list');
+    const sectionsEl = $('#sections-list');
+
+    function renderSections(){
+      sectionsEl.innerHTML = '';
+      State.sections.forEach(name=>{
+        const btn = document.createElement('button');
+        btn.className = 'pill ' + (name===State.activeSection?'active':'');
+        btn.textContent = name;
+        btn.addEventListener('click', ()=>{ State.activeSection = name; $('#active-section-name').textContent = name; renderPatients(); });
+        sectionsEl.appendChild(btn);
+      });
+    }
+
+    function renderPatients(){
+      const q = ($('#search').value||'').toLowerCase().trim();
+      listEl.innerHTML = '';
+      const pats = State.patients.filter(p => (p.Section||'Default') === State.activeSection)
+        .filter(p => !q || JSON.stringify(p).toLowerCase().includes(q));
+
+      pats.forEach(p=>{
+        const row = document.createElement('div'); row.className = 'row';
+        row.innerHTML = `
+          <div class="row-main">
+            <div class="row-title">${p['Patient Name']||'(Unnamed)'}</div>
+            <div class="row-sub">${p['Patient Age']||'—'} yrs • Room ${p['Room']||'—'}</div>
+            <div class="row-tag">${p['Section']||'Default'}</div>
+          </div>
+          <div class="row-code">${p['Patient Code']}</div>
+        `;
+        row.addEventListener('click', ()=> openPatient(p['Patient Code']));
+        listEl.appendChild(row);
+      });
+      if (!pats.length) {
+        const empty = document.createElement('div'); empty.className='empty small'; empty.textContent='No patients in this view.';
+        listEl.appendChild(empty);
+      }
+    }
+
+    function openPatient(code){
+      const p = State.patients.find(x=>x['Patient Code']===code);
+      if (!p) return;
+      $('#dashboard-title').textContent = 'Dashboard — ' + (p['Patient Name'] || p['Patient Code']);
+      const esas = ESAS.getForPatient(code);
+      const ctcae = CTCAE.getForPatient(code);
+      const labs = Labs.getForPatient(code);
+      Dashboard.bindPatient(p, { esas, ctcae, labs });
+      $('#dashboard-panel').dataset.empty = 'false';
+      // bind bio inputs to write-through
+      document.querySelectorAll('#bio-grid [data-bind-field], textarea[data-bind-field]').forEach(inp=>{
+        inp.addEventListener('change', ()=>savePatientField(p['Patient Code'], inp.getAttribute('data-bind-field'), inp.value));
+        inp.addEventListener('blur',   ()=>savePatientField(p['Patient Code'], inp.getAttribute('data-bind-field'), inp.value));
+      });
+    }
+
+    async function savePatientField(code, field, value){
+      try {
+        await Sheets.writePatientField(code, field, value);
+      } catch(err){
+        console.error(err);
+      }
+    }
+
+    // --- Buttons ---
+    $('#btn-add-section').onclick = async ()=>{
+      const name = prompt('New section name') || '';
+      if (!name.trim()) return;
+      if (!State.sections.includes(name)) State.sections.push(name);
+      State.activeSection = name;
+      $('#active-section-name').textContent = name;
+      renderSections(); renderPatients();
+      try { await Sheets.createSection(name); } catch{}
+    };
+
+    $('#btn-rename-section').onclick = async ()=>{
+      const oldName = State.activeSection;
+      const newName = prompt('Rename section', oldName) || '';
+      if (!newName.trim() || newName===oldName) return;
+      try {
+        await Sheets.renameSection(oldName, newName);
+        State.sections = State.sections.map(s=>s===oldName?newName:s);
+        State.patients.forEach(p=>{ if(p.Section===oldName) p.Section=newName; });
+        State.activeSection = newName;
+        $('#active-section-name').textContent = newName;
+        renderSections(); renderPatients();
+      } catch(e){ console.error(e); }
+    };
+
+    $('#btn-delete-section').onclick = async ()=>{
+      if (!confirm('Delete this section and all its patients?')) return;
+      try {
+        await Sheets.deleteSection(State.activeSection);
+        State.patients = State.patients.filter(p=>p.Section!==State.activeSection);
+        State.sections = State.sections.filter(s=>s!==State.activeSection);
+        State.activeSection = State.sections[0] || 'Default';
+        if (!State.sections.length) State.sections = ['Default'];
+        $('#active-section-name').textContent = State.activeSection;
+        renderSections(); renderPatients();
+      } catch(e){ console.error(e); }
+    };
+
+    $('#btn-new-patient').onclick = async ()=>{
+      const code = 'P' + Math.random().toString(36).slice(2,8).toUpperCase();
+      const obj = {
+        'Patient Code': code,'Patient Name':'','Patient Age':'','Room':'','Admitting Provider':'','Diagnosis':'','Diet':'','Isolation':'','Comments':'',
+        'Section': State.activeSection, 'Done': false, 'Updated At': new Date().toISOString(),
+        'HPI Diagnosis':'','HPI Previous':'','HPI Current':'','HPI Initial':'','Patient Assessment':'','Medication List':'','Latest Notes':''
+      };
+      try{
+        await Sheets.insertPatient(obj);
+        State.patients.push(obj);
+        renderPatients();
+      }catch(e){ console.error(e); }
+    };
+
+    $('#btn-refresh').onclick = loadAll;
+
+    $('#btn-import').onclick = ()=>{
+      document.getElementById('csv-preview').innerHTML='';
+      document.getElementById('csv-file-input').value='';
+      document.getElementById('btn-import-confirm').onclick = async ()=>{
+        const rows = Importer.consumeValidatedRows();
+        if (!rows.length) { alert('No rows to import.'); return; }
+        // map rows to patient objects
+        const objs = rows.map(r => ({
+          'Patient Code': r[0] || ('P'+Math.random().toString(36).slice(2,8).toUpperCase()),
+          'Patient Name': r[1]||'','Patient Age': r[2]||'','Room': r[3]||'','Admitting Provider': r[4]||'',
+          'Diagnosis': r[5]||'','Diet': r[6]||'','Isolation': r[7]||'','Comments': r[8]||'',
+          'Section': State.activeSection,'Done': false,'Updated At': new Date().toISOString(),
+          'HPI Diagnosis':'','HPI Previous':'','HPI Current':'','HPI Initial':'','Patient Assessment':'','Medication List':'','Latest Notes':''
+        }));
+        try{
+          await Sheets.bulkInsertPatients(objs);
+          State.patients.push(...objs);
+          renderPatients();
+          document.querySelector('[data-close-modal="import-modal"]').click();
+        }catch(e){ console.error(e); }
+      };
+      document.getElementById('import-modal').classList.remove('hidden');
+    };
+
+    $('#open-settings').onclick = ()=>{
+      $('#set-spreadsheet-id').value = State.config.spreadsheetId;
+      $('#set-bridge-url').value = State.config.bridgeUrl;
+      $('#set-ai-endpoint').value = State.config.aiEndpoint;
+      $('#settings-modal').classList.remove('hidden');
+    };
+    $('#btn-settings-save').onclick = async ()=>{
+      State.config.spreadsheetId = $('#set-spreadsheet-id').value.trim();
+      State.config.bridgeUrl = $('#set-bridge-url').value.trim();
+      State.config.aiEndpoint = $('#set-ai-endpoint').value.trim();
+      localStorage.setItem('pr.sheet', State.config.spreadsheetId);
+      localStorage.setItem('pr.bridge', State.config.bridgeUrl);
+      localStorage.setItem('pr.ai', State.config.aiEndpoint);
+      document.getElementById('settings-modal').classList.add('hidden');
+      await initSheets(); await loadAll();
+    };
+
+    // --- ESAS/CTCAE/Labs write-through from modules ---
+    Bus.on('esas.changed', async ({code,record})=>{
+      try{ await Sheets.writeESAS(code, record); }catch(e){ console.error(e); }
+    });
+    Bus.on('ctcae.changed', async ({code,record})=>{
+      try{ await Sheets.writeCTCAE(code, record); }catch(e){ console.error(e); }
+    });
+    Bus.on('labs.changed', async ({code,record})=>{
+      try{ await Sheets.writeLabs(code, record); }catch(e){ console.error(e); }
+    });
+
+    // --- Init & load ---
+    async function initSheets(){
+      if (!State.config.spreadsheetId || !State.config.bridgeUrl) return;
+      try{
+        await Sheets.init({ spreadsheetId: State.config.spreadsheetId, bridgeUrl: State.config.bridgeUrl, useOAuth: false });
+      }catch(e){ console.error(e); }
+    }
+
+    async function loadAll(){
+      if (!State.config.spreadsheetId || !State.config.bridgeUrl) return;
+      try{
+        const data = await Sheets.loadAll();
+        State.sections = data.sections?.length? data.sections : ['Default'];
+        State.patients = data.patients || [];
+        State.esas = data.esas || [];
+        State.ctcae = data.ctcae || [];
+        State.labs = data.labs || [];
+        if (!State.sections.includes(State.activeSection)) State.activeSection = State.sections[0]||'Default';
+        $('#active-section-name').textContent = State.activeSection;
+        renderSections(); renderPatients();
+      }catch(e){ console.error(e); }
+    }
+
+    await initSheets();
+    await loadAll();
+  </script>
+</body>
+</html>
