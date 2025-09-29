@@ -1,5 +1,5 @@
 // js/app.js
-// Palliative Rounds — App Orchestrator (Fix: bind data fields write-through + previous fixes)
+// Palliative Rounds — App Orchestrator (delete cascade UI cleanup + previous fixes)
 
 import { Sheets } from './sheets.js';
 import { Patients } from './patients.js';
@@ -13,57 +13,31 @@ import { Utils } from './utils.js';
 import { AIModule } from './ai.js';
 import { Symptoms } from './symptoms.js';
 
-// Defaults on first run
 const DEFAULTS = {
   spreadsheetId: '1l8UoblxznwV_zz7ZqnorOWZKfnmG3pZgVCT0DaSm0kU',
-  bridgeUrl: 'https://script.google.com/macros/s/AKfycbzathjloiJHn68LtVk9vdIx-Q8UiqHIvxBRxaJRdF-wzjuTqRFZx2pD7uHSlOwnNsA0/exec'
+  bridgeUrl: 'https://script.google.com/macros/s/AKfycbyLEWF-O49ifMKWYlPZ3bPvNN9w184Ddz_bGXhlWmmQD3SwZKG5aIiQ_bgapiKElmiE/exec'
 };
 (function ensureDefaults(){
   if (!localStorage.getItem('pr.sheet')) localStorage.setItem('pr.sheet', DEFAULTS.spreadsheetId);
   if (!localStorage.getItem('pr.bridge')) localStorage.setItem('pr.bridge', DEFAULTS.bridgeUrl);
 })();
 
-// Helpers
 const q = (s, r=document)=>r.querySelector(s);
 const qa = (s, r=document)=>Array.from(r.querySelectorAll(s));
 const toast = (m,t='info')=>UI.toast(m,t);
 
-// Abnormal labs util
 const LAB_REF = {
   'WBC':[4.0,11.0],'HGB':[12.0,16.0],'PLT':[150,450],'ANC':[1.5,8.0],'CRP':[0,5],
   'Albumin':[3.5,5.0],'Sodium (Na)':[135,145],'Potassium (K)':[3.5,5.1],'Chloride (Cl)':[98,107],
   'Calcium (Ca)':[8.5,10.5],'Phosphorus (Ph)':[2.5,4.5],'Alkaline Phosphatase (ALP)':[44,147],
   'Creatinine (Scr)':[0.6,1.3],'BUN':[7,20],'Total Bile':[0.1,1.2]
 };
-const parseNum = v => {
-  if (v==null) return null;
-  if (typeof v==='number') return Number.isFinite(v)?v:null;
-  const m = String(v).trim().match(/-?\d+(\.\d+)?/);
-  if (!m) return null;
-  const n = parseFloat(m[0]); return Number.isNaN(n)?null:n;
-};
-const short = k => k.replace('Alkaline Phosphatase (ALP)','ALP')
-  .replace('Creatinine (Scr)','Scr').replace('Sodium (Na)','Na')
-  .replace('Potassium (K)','K').replace('Chloride (Cl)','Cl')
-  .replace('Calcium (Ca)','Ca').replace('Phosphorus (Ph)','Ph');
-function abnormalSummary(labs){
-  if (!labs) return '';
-  const arr=[];
-  Object.keys(LAB_REF).forEach(k=>{
-    const [lo,hi]=LAB_REF[k]; const n=parseNum(labs[k]);
-    if (n==null) return;
-    if (n<lo) arr.push(short(k)+'↓'); else if (n>hi) arr.push(short(k)+'↑');
-  });
-  return arr.join(', ');
-}
+const parseNum = v => { if (v==null) return null; if (typeof v==='number') return Number.isFinite(v)?v:null; const m=String(v).trim().match(/-?\d+(\.\d+)?/); if(!m) return null; const n=parseFloat(m[0]); return Number.isNaN(n)?null:n; };
+const short = k => k.replace('Alkaline Phosphatase (ALP)','ALP').replace('Creatinine (Scr)','Scr').replace('Sodium (Na)','Na').replace('Potassium (K)','K').replace('Chloride (Cl)','Cl').replace('Calcium (Ca)','Ca').replace('Phosphorus (Ph)','Ph');
+function abnormalSummary(labs){ if(!labs) return ''; const arr=[]; Object.keys(LAB_REF).forEach(k=>{ const [lo,hi]=LAB_REF[k]; const n=parseNum(labs[k]); if(n==null) return; if(n<lo) arr.push(short(k)+'↓'); else if(n>hi) arr.push(short(k)+'↑'); }); return arr.join(', '); }
 
-// Event Bus
-const Bus = (()=>{const m=new Map();return{
-  on(n,f){ if(!m.has(n)) m.set(n,new Set()); m.get(n).add(f); return ()=>m.get(n)?.delete(f); },
-  emit(n,p){ m.get(n)?.forEach(fn=>{ try{fn(p);}catch(e){console.error('Bus',e);} }); }
-};})();
+const Bus = (()=>{const m=new Map();return{ on(n,f){ if(!m.has(n)) m.set(n,new Set()); m.get(n).add(f); return ()=>m.get(n)?.delete(f); }, emit(n,p){ m.get(n)?.forEach(fn=>{ try{fn(p);}catch(e){console.error('Bus',e);} }); } };})();
 
-// Global State
 const State = {
   ready:false, loading:false, filter:'all', search:'',
   activeSection:'Default', sections:['Default'],
@@ -76,7 +50,6 @@ const State = {
   get activePatient(){ return Patients.getActive?.()||null; }
 };
 
-// Sections
 function renderSections(){
   const root=q('#sections-list'); if(!root) return; root.innerHTML='';
   State.sections.forEach(name=>{
@@ -92,17 +65,8 @@ function renderSections(){
   });
   const label=q('#active-section-name'); if(label) label.textContent=State.activeSection||'Default';
 }
-function symptomsPreview(p){
-  const s=(p['Symptoms']||'').split(',').map(x=>x.trim()).filter(Boolean);
-  return s.length? s.slice(0,3).join(', ')+(s.length>3?` (+${s.length-3})`:'') : '';
-}
-function getFilteredPatients(){
-  const s=State.search.toLowerCase().trim(), f=State.filter;
-  const inSec=p=>(p.Section||'Default')===State.activeSection;
-  const txt=p=>!s||JSON.stringify(p).toLowerCase().includes(s);
-  const st=p=> f==='all'?true : (f==='done'? !!p['Done'] : !p['Done']);
-  return State.patients.filter(p=>inSec(p)&&txt(p)&&st(p));
-}
+function symptomsPreview(p){ const s=(p['Symptoms']||'').split(',').map(x=>x.trim()).filter(Boolean); return s.length? s.slice(0,3).join(', ')+(s.length>3?` (+${s.length-3})`:'') : ''; }
+function getFilteredPatients(){ const s=State.search.toLowerCase().trim(), f=State.filter; const inSec=p=>(p.Section||'Default')===State.activeSection; const txt=p=>!s||JSON.stringify(p).toLowerCase().includes(s;); const st=p=> f==='all'?true : (f==='done'? !!p['Done'] : !p['Done']); return State.patients.filter(p=>inSec(p)&&txt(p)&&st(p)); }
 function renderPatientsList(){
   const list=q('#patients-list'); if(!list) return; list.innerHTML='';
   const items=getFilteredPatients();
@@ -133,7 +97,6 @@ function renderPatientsList(){
 
     row.appendChild(left); row.appendChild(right);
 
-    // اسم المريض يفتح المودال
     name.addEventListener('click',(e)=>{
       e.stopPropagation();
       Patients.setActiveByCode?.(p['Patient Code']);
@@ -144,146 +107,74 @@ function renderPatientsList(){
   });
 }
 
-// ===== Dashboard & field syncing =====
-
 let dashboardFieldBindingDone = false;
-
-// خرائط أسماء الحقول للـHPI/النصوص عند غياب data-bind-field
 const FIELD_FALLBACK_MAP = {
-  '#hpi-diagnosis':       'HPI Diagnosis',
-  '#hpi-initial':         'HPI Initial',
-  '#hpi-previous':        'HPI Previous',
-  '#hpi-current':         'HPI Current',
-  '#patient-assessment':  'Patient Assessment',
-  '#medication-list':     'Medication List',
-  '#latest-notes':        'Latest Notes'
+  '#hpi-diagnosis':'HPI Diagnosis','#hpi-initial':'HPI Initial','#hpi-previous':'HPI Previous','#hpi-current':'HPI Current',
+  '#patient-assessment':'Patient Assessment','#medication-list':'Medication List','#latest-notes':'Latest Notes'
 };
-
-const debouncedWrites = new WeakMap();
+const debouncedWrites=new WeakMap();
 function writeFieldDebounced(code, field, el){
-  // debounce لكل عنصر منفصل
-  if (!debouncedWrites.has(el)) {
+  if(!debouncedWrites.has(el)){
     debouncedWrites.set(el, Utils.debounce(async ()=>{
-      const value = (el.value ?? '').toString();
-      try {
+      const value=(el.value??'').toString();
+      try{
         await Sheets.writePatientField(code, field, value);
-        // sync local state
-        const idx = State.patients.findIndex(p=>p['Patient Code']===code);
-        if (idx>=0) State.patients[idx][field] = value;
-      } catch (e) {
-        console.error(e);
-        toast(`Failed to save ${field}.`, 'danger');
-      }
-    }, 350));
+        const idx=State.patients.findIndex(p=>p['Patient Code']===code);
+        if(idx>=0) State.patients[idx][field]=value;
+      }catch(e){ console.error(e); toast(`Failed to save ${field}.`,'danger'); }
+    },350));
   }
   debouncedWrites.get(el)();
 }
-
 function bindDashboardFieldSyncOnce(){
-  if (dashboardFieldBindingDone) return;
-  dashboardFieldBindingDone = true;
-
-  // التفويض على مستوى الوثيقة: نلتقط input/change داخل #patient-modal
-  document.addEventListener('input', (e)=>{
-    const modal = q('#patient-modal');
-    if (!modal || modal.classList.contains('hidden')) return;
-
-    const target = e.target;
-    if (!target) return;
-
-    // أولاً: عنصر يحمل data-bind-field (الكود الذي يُنشئه dashboard.js للبروفايل Bio)
-    let field = target.getAttribute && target.getAttribute('data-bind-field');
-
-    // ثانياً: fallback بناءً على المعرّف لإسناد HPI والحقول النصية
-    if (!field && target.id) {
-      const key = '#'+target.id;
-      if (FIELD_FALLBACK_MAP[key]) field = FIELD_FALLBACK_MAP[key];
-    }
-
-    if (!field) return;
-
-    const code = modal.dataset.code || (State.activePatient && State.activePatient['Patient Code']);
-    if (!code) return;
-
-    writeFieldDebounced(code, field, target);
-  }, true); // capture to catch early
-
-  document.addEventListener('change', (e)=>{
-    // على التغيير، نجبر كتابة فورية (بدون انتظار debounce) لموثوقية أعلى
-    const modal = q('#patient-modal');
-    if (!modal || modal.classList.contains('hidden')) return;
-
-    const target = e.target;
-    if (!target) return;
-
-    let field = target.getAttribute && target.getAttribute('data-bind-field');
-    if (!field && target.id) {
-      const key = '#'+target.id;
-      if (FIELD_FALLBACK_MAP[key]) field = FIELD_FALLBACK_MAP[key];
-    }
-    if (!field) return;
-
-    const code = modal.dataset.code || (State.activePatient && State.activePatient['Patient Code']);
-    if (!code) return;
-
-    const value = (target.value ?? '').toString();
-    Sheets.writePatientField(code, field, value)
-      .then(()=>{
-        const idx = State.patients.findIndex(p=>p['Patient Code']===code);
-        if (idx>=0) State.patients[idx][field] = value;
-      })
-      .catch((err)=>{ console.error(err); toast(`Failed to save ${field}.`, 'danger'); });
+  if(dashboardFieldBindingDone) return;
+  dashboardFieldBindingDone=true;
+  document.addEventListener('input',(e)=>{
+    const modal=q('#patient-modal'); if(!modal||modal.classList.contains('hidden')) return;
+    const t=e.target; if(!t) return;
+    let field=t.getAttribute&&t.getAttribute('data-bind-field');
+    if(!field&&t.id){ const k='#'+t.id; if(FIELD_FALLBACK_MAP[k]) field=FIELD_FALLBACK_MAP[k]; }
+    if(!field) return;
+    const code=modal.dataset.code || (State.activePatient && State.activePatient['Patient Code']); if(!code) return;
+    writeFieldDebounced(code, field, t);
+  }, true);
+  document.addEventListener('change',(e)=>{
+    const modal=q('#patient-modal'); if(!modal||modal.classList.contains('hidden')) return;
+    const t=e.target; if(!t) return;
+    let field=t.getAttribute&&t.getAttribute('data-bind-field');
+    if(!field&&t.id){ const k='#'+t.id; if(FIELD_FALLBACK_MAP[k]) field=FIELD_FALLBACK_MAP[k]; }
+    if(!field) return;
+    const code=modal.dataset.code || (State.activePatient && State.activePatient['Patient Code']); if(!code) return;
+    const value=(t.value??'').toString();
+    Sheets.writePatientField(code, field, value).then(()=>{ const idx=State.patients.findIndex(p=>p['Patient Code']===code); if(idx>=0) State.patients[idx][field]=value; }).catch(err=>{ console.error(err); toast(`Failed to save ${field}.`,'danger'); });
   }, true);
 }
 
 function openDashboardFor(code, asModal=false){
-  const patient = State.patients.find(p=>p['Patient Code']===code);
+  const patient=State.patients.find(p=>p['Patient Code']===code);
   if(!patient) return;
-
-  // تأكيد تعيين المريض النشط + تخزين الكود على المودال
   Patients.setActiveByCode?.(code);
-  const pm = q('#patient-modal'); if (pm) pm.dataset.code = code;
+  const pm=q('#patient-modal'); if(pm) pm.dataset.code=code;
 
   const t=q('#dashboard-title'); if(t) t.textContent=`Dashboard — ${patient['Patient Name']||code}`;
   const mt=q('#patient-modal-title'); if(mt) mt.textContent=patient['Patient Name']||code;
 
-  Dashboard.bindPatient(patient, {
-    esas: ESAS.getForPatient(code, State.esas),
-    ctcae: CTCAE.getForPatient(code, State.ctcae),
-    labs: Labs.getForPatient(code, State.labs)
-  });
+  Dashboard.bindPatient(patient,{ esas:ESAS.getForPatient(code,State.esas), ctcae:CTCAE.getForPatient(code,State.ctcae), labs:Labs.getForPatient(code,State.labs) });
 
-  // Symptoms
-  const sData = { symptoms:(patient['Symptoms']||'').split(',').map(x=>x.trim()).filter(Boolean),
-                  notes: safeJSON(patient['Symptoms Notes']||'{}') };
+  const sData={ symptoms:(patient['Symptoms']||'').split(',').map(x=>x.trim()).filter(Boolean), notes: safeJSON(patient['Symptoms Notes']||'{}') };
   Symptoms.render(code, sData);
 
   const panel=q('#dashboard-panel'); if(panel) panel.dataset.empty='false';
 
-  // لمس updated at
-  const now=new Date().toISOString();
-  Sheets.writePatientField(code,'Updated At',now).catch(()=>{});
-
-  // تأكد من تفعيل ربط المزامنة للحقول
+  Sheets.writePatientField(code,'Updated At',new Date().toISOString()).catch(()=>{});
   bindDashboardFieldSyncOnce();
-
   if(asModal) openPatientModal();
 }
-const safeJSON = s => { try{return JSON.parse(s);}catch{return{};} };
+const safeJSON=s=>{ try{return JSON.parse(s);}catch{return{};} };
 
-// Modal open/close
-function openPatientModal(){
-  const m=q('#patient-modal'); if(!m) return;
-  m.classList.remove('hidden'); document.documentElement.style.overflow='hidden';
-  const onKey=(ev)=>{ if(ev.key==='Escape'){ ev.preventDefault(); closePatientModal(); document.removeEventListener('keydown',onKey); } };
-  document.addEventListener('keydown', onKey);
-}
-function closePatientModal(){
-  const m=q('#patient-modal'); if(!m) return;
-  m.classList.add('hidden'); document.documentElement.style.overflow='';
-}
+function openPatientModal(){ const m=q('#patient-modal'); if(!m) return; m.classList.remove('hidden'); document.documentElement.style.overflow='hidden'; const onKey=(ev)=>{ if(ev.key==='Escape'){ ev.preventDefault(); closePatientModal(); document.removeEventListener('keydown',onKey);} }; document.addEventListener('keydown',onKey); }
+function closePatientModal(){ const m=q('#patient-modal'); if(!m) return; m.classList.add('hidden'); document.documentElement.style.overflow=''; }
 
-// Load & Sheets
 async function loadAllFromSheets(){
   State.loading=true;
   try{
@@ -301,11 +192,9 @@ async function loadAllFromSheets(){
   finally{ State.loading=false; }
 }
 
-// UI binding + delegation
 function bindUI(){
   UI.init?.(Bus);
 
-  // Tabs filter
   qa('.tabs .tab').forEach(t=>{
     t.addEventListener('click',()=>{
       qa('.tabs .tab').forEach(x=>x.classList.remove('active'));
@@ -315,11 +204,9 @@ function bindUI(){
     });
   });
 
-  // Search
   const s=q('#search');
   if(s) s.addEventListener('input', Utils.debounce(e=>{ State.search=e.target.value||''; renderPatientsList(); },200));
 
-  // Section buttons
   q('#btn-add-section')?.addEventListener('click', async ()=>{
     const name=prompt('New section name')||''; if(!name.trim()) return;
     if(State.sections.includes(name)) return toast('Section name already exists.','warn');
@@ -358,16 +245,13 @@ function bindUI(){
     }catch{ toast('Failed to delete section.','danger'); }
   });
 
-  // New patient
   q('#btn-new-patient')?.addEventListener('click', async ()=>{
     try{
-      const p = Patients.createEmpty?.(State.activeSection) || {
-        'Patient Code':'P'+Math.random().toString(36).slice(2,8).toUpperCase(),
+      const p={'Patient Code':'P'+Math.random().toString(36).slice(2,8).toUpperCase(),
         'Patient Name':'','Patient Age':'','Room':'','Admitting Provider':'','Diagnosis':'','Diet':'','Isolation':'','Comments':'',
         'Section':State.activeSection,'Done':false,'Updated At':new Date().toISOString(),
         'HPI Diagnosis':'','HPI Previous':'','HPI Current':'','HPI Initial':'','Patient Assessment':'','Medication List':'','Latest Notes':'',
-        'Symptoms':'','Symptoms Notes':'{}','Labs Abnormal':''
-      };
+        'Symptoms':'','Symptoms Notes':'{}','Labs Abnormal':''};
       await Sheets.insertPatient(p);
       State.patients.unshift(p); renderPatientsList();
       Patients.setActiveByCode?.(p['Patient Code']); openDashboardFor(p['Patient Code'], true);
@@ -375,7 +259,6 @@ function bindUI(){
     }catch{ toast('Failed to create patient in Sheets.','danger'); }
   });
 
-  // Import modal open
   q('#btn-import')?.addEventListener('click', ()=>{
     q('#csv-preview').innerHTML=''; q('#csv-file-input').value='';
     q('#import-modal')?.classList.remove('hidden');
@@ -399,20 +282,14 @@ function bindUI(){
     };
   });
 
-  // Export template
   q('#btn-export-template')?.addEventListener('click', ()=>{
-    const headers=[
-      'Patient Code','Patient Name','Patient Age','Room','Diagnosis','Section',
-      'Admitting Provider','Diet','Isolation','Comments',
-      'Symptoms (comma-separated)','Symptoms Notes (JSON map)','Labs Abnormal (comma-separated)'
-    ];
+    const headers=['Patient Code','Patient Name','Patient Age','Room','Diagnosis','Section','Admitting Provider','Diet','Isolation','Comments','Symptoms (comma-separated)','Symptoms Notes (JSON map)','Labs Abnormal (comma-separated)'];
     const csv=headers.join(',')+'\n';
     const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='palliative_rounds_template.csv'; a.click(); URL.revokeObjectURL(a.href);
     toast('Template downloaded.','success');
   });
 
-  // Delete all patients in section
   q('#btn-delete-all-pats')?.addEventListener('click', async ()=>{
     const sec=State.activeSection; if(!sec) return;
     const list=State.patients.filter(p=>(p.Section||'Default')===sec);
@@ -420,17 +297,19 @@ function bindUI(){
     if(!confirm(`Delete ALL ${list.length} patients in section “${sec}”? This cannot be undone.`)) return;
     try{
       const codes=list.map(p=>p['Patient Code']);
-      State.patients=State.patients.filter(p=>(p.Section||'Default')!==sec); renderPatientsList();
+      State.patients=State.patients.filter(p=>(p.Section||'Default')!==sec);
+      State.esas = State.esas.filter(r=>!codes.includes(r['Patient Code']));
+      State.ctcae= State.ctcae.filter(r=>!codes.includes(r['Patient Code']));
+      State.labs = State.labs.filter(r=>!codes.includes(r['Patient Code']));
+      renderPatientsList();
       const didBulk = await Sheets.deletePatientsInSection?.(sec);
       if(!didBulk) await Sheets.bulkDeletePatients?.(codes);
       toast(`Deleted ${list.length} patients in “${sec}”.`,'success');
     }catch{ toast('Failed to delete all patients from Sheets.','danger'); }
   });
 
-  // Refresh
   q('#btn-refresh')?.addEventListener('click', async ()=>{ await loadAllFromSheets(); toast('Data refreshed.','success'); });
 
-  // Close any modal via attribute
   qa('[data-close-modal]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const id=btn.getAttribute('data-close-modal'); if(!id) return;
@@ -439,10 +318,7 @@ function bindUI(){
     });
   });
 
-  // === Delegation fixes ===
-
-  // Settings (works even لو تغيّر العنصر)
-  document.addEventListener('click', (e)=>{
+  document.addEventListener('click',(e)=>{
     const t=e.target.closest('#open-settings'); if(!t) return;
     e.preventDefault();
     q('#set-spreadsheet-id').value = State.config.spreadsheetId;
@@ -451,7 +327,6 @@ function bindUI(){
     q('#settings-modal')?.classList.remove('hidden');
   });
 
-  // Save settings
   q('#btn-settings-save')?.addEventListener('click', async ()=>{
     State.config.spreadsheetId = q('#set-spreadsheet-id').value.trim();
     State.config.bridgeUrl     = q('#set-bridge-url').value.trim();
@@ -463,35 +338,36 @@ function bindUI(){
     await loadAllFromSheets(); toast('Settings saved. Reconnected.','success');
   });
 
-  // Delete patient inside modal (robust)
   document.addEventListener('click', async (e)=>{
-    const btn = e.target.closest('#btn-delete-patient'); if(!btn) return;
-    const modal = q('#patient-modal'); const code = modal?.dataset.code;
+    const btn=e.target.closest('#btn-delete-patient'); if(!btn) return;
+    const modal=q('#patient-modal'); const code=modal?.dataset.code;
     let p = code ? State.patients.find(x=>x['Patient Code']===code) : State.activePatient;
     if(!p){ toast('Select a patient first.','warn'); return; }
-    const ok = confirm(`Delete patient “${p['Patient Name']||p['Patient Code']}”?`);
-    if(!ok) return;
+    if(!confirm(`Delete patient “${p['Patient Name']||p['Patient Code']}”?`)) return;
     try{
       await Sheets.deletePatient(p['Patient Code']);
-      State.patients = State.patients.filter(x=>x['Patient Code']!==p['Patient Code']);
+      // تنظيف الحالة المحلية (Patients + ESAS + CTCAE + Labs)
+      const theCode=p['Patient Code'];
+      State.patients = State.patients.filter(x=>x['Patient Code']!==theCode);
+      State.esas     = State.esas.filter(x=>x['Patient Code']!==theCode);
+      State.ctcae    = State.ctcae.filter(x=>x['Patient Code']!==theCode);
+      State.labs     = State.labs.filter(x=>x['Patient Code']!==theCode);
       renderPatientsList(); Dashboard.clearEmpty?.(true); closePatientModal();
       toast('Patient deleted.','success');
     }catch{ toast('Failed to delete patient.','danger'); }
   });
 
-  // Mark done
   q('#btn-mark-done')?.addEventListener('click', async ()=>{
     const modal=q('#patient-modal'); const code=modal?.dataset.code;
     const p = code ? State.patients.find(x=>x['Patient Code']===code) : State.activePatient;
     if(!p) return toast('Select a patient first.','warn');
-    const newVal = !(p['Done']===true);
+    const newVal=!(p['Done']===true);
     try{
       p['Done']=newVal; await Sheets.writePatientField(p['Patient Code'],'Done', newVal?'TRUE':'FALSE');
       renderPatientsList(); toast(newVal?'Marked as Done.':'Marked as Open.','success');
     }catch{ toast('Failed to update Done in Sheets.','danger'); }
   });
 
-  // Duplicate
   q('#btn-duplicate')?.addEventListener('click', async ()=>{
     const modal=q('#patient-modal'); const code=modal?.dataset.code;
     const p = code ? State.patients.find(x=>x['Patient Code']===code) : State.activePatient;
@@ -505,7 +381,6 @@ function bindUI(){
     }catch{ toast('Failed to duplicate in Sheets.','danger'); }
   });
 
-  // Symptoms write-through
   Bus.on('symptoms.changed', async ({ code, symptoms, notes })=>{
     try{
       const s=(symptoms||[]).join(', '), n=JSON.stringify(notes||{});
@@ -516,14 +391,12 @@ function bindUI(){
     }catch{ toast('Failed to sync symptoms.','danger'); }
   });
 
-  // Labs write-through
   Bus.on('labs.changed', async ({ code, record })=>{
     try{ await Sheets.writeLabs(code, record); Labs.upsertLocal?.(State.labs, record); toast('Synced','success'); }
     catch{ toast('Failed to sync Labs.','danger'); }
   });
 }
 
-// Public entry
 export const App = {
   async start(){
     bindUI();
