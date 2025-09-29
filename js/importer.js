@@ -1,10 +1,10 @@
 // js/importer.js
-// CSV Importer (Updated):
-// - Strict headers per new spec
-// - Scrollable preview container (handled by CSS; table uses nowrap when wide)
-// - Tolerant CSV parser (quotes, commas inside quotes)
-// - Clear toasts for success/failure
-// - Returns validated rows (array of arrays) for the app to map into patient objects
+// CSV/TSV Importer (Updated):
+// - Accepts NEW template (13 cols) or LEGACY template (9 cols)
+// - Maps "Cause Of Admission" (legacy) -> "Diagnosis" (new)
+// - Parses CSV or TSV (auto-detect , ; \t ; supports quotes for CSV/TSV)
+// - Scrollable preview is in CSS; table uses nowrap to allow horizontal scroll
+// - Returns rows normalized to EXPECTED_HEADERS order for app.js to consume
 
 import { UI } from './ui.js';
 
@@ -26,7 +26,7 @@ const EXPECTED_HEADERS = [
   'Labs Abnormal (comma-separated)'
 ];
 
-// للكشف عن القالب القديم وإعطاء رسالة مفيدة
+// القالب القديم الذي طلبته:
 const LEGACY_HEADERS = [
   'Patient Code',
   'Patient Name',
@@ -46,9 +46,27 @@ const els = {
 };
 
 let validatedRows = [];
+let lastMode = 'new'; // 'new' | 'legacy'
 
-/** Parser بسيط لـ CSV يدعم الفواصل داخل علامات اقتباس مزدوجة */
-function parseCSV(text) {
+// ===== Delimiter detection =====
+function detectDelimiter(text) {
+  // اعتمد السطر الأول
+  const first = (text.split(/\r?\n/, 1)[0] || '');
+  const scores = {
+    ',': (first.match(/,/g) || []).length,
+    '\t': (first.match(/\t/g) || []).length,
+    ';': (first.match(/;/g) || []).length
+  };
+  // اختر الأكثر تكرارًا، ولو كله صفر نعود للفاصلة
+  let maxDelim = ',', max = -1;
+  for (const d of Object.keys(scores)) {
+    if (scores[d] > max) { max = scores[d]; maxDelim = d; }
+  }
+  return maxDelim;
+}
+
+// ===== CSV/TSV parser with quotes, custom delimiter =====
+function parseDSV(text, delim) {
   const rows = [];
   let i = 0, field = '', row = [], inQuotes = false;
 
@@ -65,7 +83,7 @@ function parseCSV(text) {
       } else { field += ch; i++; continue; }
     } else {
       if (ch === '"') { inQuotes = true; i++; continue; }
-      if (ch === ',') { pushField(); i++; continue; }
+      if (ch === delim) { pushField(); i++; continue; }
       if (ch === '\n') { pushField(); pushRow(); i++; continue; }
       if (ch === '\r') { i++; continue; } // CRLF
       field += ch; i++;
@@ -78,7 +96,31 @@ function parseCSV(text) {
   return rows;
 }
 
-/** قص/توسيع الصف ليتطابق مع عدد الأعمدة المتوقّع */
+// ===== Header validation =====
+function validateHeaders(headerRow) {
+  const got = (headerRow || []).map(h => (h || '').trim());
+
+  // NEW template (exact match)
+  if (got.length === EXPECTED_HEADERS.length && EXPECTED_HEADERS.every((h, i) => h === got[i])) {
+    return { ok: true, mode: 'new', message: 'Detected NEW template.' };
+  }
+
+  // LEGACY template (exact match to the provided list)
+  if (got.length === LEGACY_HEADERS.length && LEGACY_HEADERS.every((h, i) => h === got[i])) {
+    return { ok: true, mode: 'legacy', message: 'Detected LEGACY template. Mapping “Cause Of Admission” → “Diagnosis”.' };
+  }
+
+  // Mismatch
+  return {
+    ok: false,
+    error: `Header mismatch. Expected either:
+- NEW: ${EXPECTED_HEADERS.join(' | ')}
+- LEGACY: ${LEGACY_HEADERS.join(' | ')}
+Got: ${got.join(' | ')}`
+  };
+}
+
+// ===== Normalize row length to a target =====
 function normalizeRowLength(row, targetLen) {
   const out = new Array(targetLen).fill('');
   for (let i = 0; i < Math.min(row.length, targetLen); i++) {
@@ -87,35 +129,32 @@ function normalizeRowLength(row, targetLen) {
   return out;
 }
 
-/** التحقق الصارم من ترتيب الأعمدة */
-function validateHeaders(headerRow) {
-  if (!headerRow) return { ok: false, error: 'Missing header row.' };
-  const got = headerRow.map(h => (h || '').trim());
-
-  // تحذير واضح لو الملف من القالب القديم
-  if (got.length === LEGACY_HEADERS.length && LEGACY_HEADERS.every((h, i) => h === got[i])) {
-    return {
-      ok: false,
-      error: 'This CSV matches an old template (with "Cause Of Admission"). Please export the new template and try again.'
-    };
-  }
-
-  if (got.length !== EXPECTED_HEADERS.length) {
-    return { ok: false, error: `Expected ${EXPECTED_HEADERS.length} columns, got ${got.length}.` };
-  }
-  for (let i = 0; i < EXPECTED_HEADERS.length; i++) {
-    if (got[i] !== EXPECTED_HEADERS[i]) {
-      return {
-        ok: false,
-        error: `Header mismatch at column ${i + 1}: expected “${EXPECTED_HEADERS[i]}”, got “${got[i]}”.`
-      };
-    }
-  }
-  return { ok: true };
+// ===== Legacy -> New mapping (returns row aligned to EXPECTED_HEADERS) =====
+// LEGACY indices:
+// 0 Code, 1 Name, 2 Age, 3 Room, 4 Admitting Provider, 5 Cause Of Admission, 6 Diet, 7 Isolation, 8 Comments
+// NEW (EXPECTED_HEADERS) indices:
+// 0 Code, 1 Name, 2 Age, 3 Room, 4 Diagnosis, 5 Section, 6 Admitting Provider, 7 Diet, 8 Isolation, 9 Comments,
+// 10 Symptoms, 11 Symptoms Notes, 12 Labs Abnormal
+function mapLegacyRowToExpected(row) {
+  const out = new Array(EXPECTED_HEADERS.length).fill('');
+  out[0]  = row[0] || ''; // Patient Code
+  out[1]  = row[1] || ''; // Patient Name
+  out[2]  = row[2] || ''; // Patient Age
+  out[3]  = row[3] || ''; // Room
+  out[4]  = row[5] || ''; // Diagnosis  <= Cause Of Admission
+  out[5]  = '';           // Section (سيُملأ بالـactive section في app.js عند الاستيراد)
+  out[6]  = row[4] || ''; // Admitting Provider
+  out[7]  = row[6] || ''; // Diet
+  out[8]  = row[7] || ''; // Isolation
+  out[9]  = row[8] || ''; // Comments
+  out[10] = '';           // Symptoms
+  out[11] = '';           // Symptoms Notes
+  out[12] = '';           // Labs Abnormal
+  return out;
 }
 
-/** عرض معاينة بسيطة (أول 10 أسطر بيانات) داخل حاوية قابلة للتمرير */
-function renderPreview(rows) {
+// ===== Preview rendering (always show as NEW headers after mapping) =====
+function renderPreview(rows, mode) {
   const root = els.preview();
   root.innerHTML = '';
 
@@ -123,9 +162,9 @@ function renderPreview(rows) {
   table.className = 'mono small';
   table.style.width = '100%';
   table.style.borderCollapse = 'collapse';
-  table.style.whiteSpace = 'nowrap'; // للسماح بالتمرير الأفقي عند الحاجة
+  table.style.whiteSpace = 'nowrap';
 
-  const maxRows = Math.min(rows.length, 11); // header + 10
+  const maxRows = Math.min(rows.length, 11); // header + 10 rows
 
   for (let r = 0; r < maxRows; r++) {
     const tr = document.createElement('tr');
@@ -147,22 +186,21 @@ function renderPreview(rows) {
     table.appendChild(tr);
   }
 
-  // ملاحظة لو كانت هناك صفوف أكثر
   const note = document.createElement('div');
   note.className = 'small muted';
   if (rows.length > 11) {
-    note.textContent = `Showing first 10 rows of ${rows.length - 1} data rows.`;
+    note.textContent = `Showing first 10 rows (${rows.length - 1} total). Mode: ${mode.toUpperCase()}.`;
   } else if (rows.length <= 1) {
-    note.textContent = 'No data rows detected.';
+    note.textContent = `No data rows detected. Mode: ${mode.toUpperCase()}.`;
   } else {
-    note.textContent = `${rows.length - 1} data rows detected.`;
+    note.textContent = `${rows.length - 1} data rows. Mode: ${mode.toUpperCase()}.`;
   }
 
   root.appendChild(table);
   root.appendChild(note);
 }
 
-/** فتح المودال وتصفير الحالة */
+// ===== Public API =====
 function open() {
   validatedRows = [];
   els.file().value = '';
@@ -171,13 +209,12 @@ function open() {
   if (m) m.classList.remove('hidden');
 }
 
-/** إغلاق المودال */
 function close() {
   const m = els.modal();
   if (m) m.classList.add('hidden');
 }
 
-/** قراءة الملف والتحقق والمعاينة */
+// ===== File change handler =====
 async function handleFileChange() {
   const fileInput = els.file();
   const file = fileInput.files?.[0];
@@ -185,7 +222,8 @@ async function handleFileChange() {
 
   try {
     const text = await file.text();
-    const rows = parseCSV(text);
+    const delim = detectDelimiter(text); // ',' or '\t' or ';'
+    const rows = parseDSV(text, delim);
 
     if (rows.length === 0) {
       validatedRows = [];
@@ -197,32 +235,40 @@ async function handleFileChange() {
     const check = validateHeaders(header);
     if (!check.ok) {
       validatedRows = [];
-      els.preview().innerHTML = `<div class="toast danger">${check.error}</div>`;
-      UI.toast(check.error, 'danger');
+      els.preview().innerHTML = `<div class="toast danger" style="white-space:pre-wrap">${check.error}</div>`;
+      UI.toast('Invalid headers. Please match NEW or LEGACY template.', 'danger');
       return;
     }
 
-    // صفوف البيانات مع ضبط الطول لعدد الأعمدة المتوقع
-    const dataRows = rows
+    // Build normalized rows aligned to EXPECTED_HEADERS whatever the source mode
+    let dataRowsRaw = rows
       .slice(1)
-      .filter(r => r.some(cell => (cell ?? '').toString().trim() !== ''))
-      .map(r => normalizeRowLength(r, EXPECTED_HEADERS.length));
+      .filter(r => r.some(cell => (cell ?? '').toString().trim() !== ''));
 
-    validatedRows = dataRows;
-
-    // المعاينة: عرض العناوين + أول 10 صفوف بيانات
-    renderPreview([EXPECTED_HEADERS, ...validatedRows.slice(0, 10)]);
-
-    if (validatedRows.length === 0) {
-      UI.toast('CSV contains no non-empty data rows.', 'warn');
+    let normalizedToExpected = [];
+    if (check.mode === 'new') {
+      normalizedToExpected = dataRowsRaw.map(r => normalizeRowLength(r, EXPECTED_HEADERS.length));
     } else {
-      UI.toast(`Validated ${validatedRows.length} rows. Ready to import.`, 'success');
+      // legacy → map each row to expected order
+      normalizedToExpected = dataRowsRaw.map(r => mapLegacyRowToExpected(normalizeRowLength(r, LEGACY_HEADERS.length)));
     }
+
+    validatedRows = normalizedToExpected;
+    lastMode = check.mode;
+
+    // Preview: always show NEW headers + first 10 mapped rows
+    renderPreview([EXPECTED_HEADERS, ...validatedRows.slice(0, 10)], check.mode);
+
+    const msg = check.mode === 'legacy'
+      ? 'Legacy template detected. “Cause Of Admission” will be stored under “Diagnosis”.'
+      : 'Validated NEW template.';
+    UI.toast(`${msg} ${validatedRows.length} rows ready.`, 'success');
+
   } catch (e) {
     console.error(e);
     validatedRows = [];
-    els.preview().innerHTML = `<div class="toast danger">Failed to read/parse CSV.</div>`;
-    UI.toast('Failed to read/parse CSV.', 'danger');
+    els.preview().innerHTML = `<div class="toast danger">Failed to read/parse file.</div>`;
+    UI.toast('Failed to read/parse file.', 'danger');
   }
 }
 
@@ -230,8 +276,6 @@ export const Importer = {
   init(bus, state) {
     Bus = bus;
     State = state;
-
-    // ربط تغيّر الملف
     const f = els.file();
     if (f) f.addEventListener('change', handleFileChange);
   },
@@ -239,9 +283,9 @@ export const Importer = {
   open,
   close,
 
-  /** تُستدعى عند النقر على Import في المودال من app.js */
+  // يُستدعى من app.js عند الضغط على Import
   consumeValidatedRows() {
-    // نُعيد نسخة حتى لا تتأثر لاحقاً
+    // نعيد نسخة آمنة محاذاة لـ EXPECTED_HEADERS دومًا
     return validatedRows.map(r => [...r]);
   }
 };
