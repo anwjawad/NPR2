@@ -1,5 +1,5 @@
 // js/app.js
-// Palliative Rounds — App Orchestrator (Fix: modal delete + settings via delegation)
+// Palliative Rounds — App Orchestrator (Fix: bind data fields write-through + previous fixes)
 
 import { Sheets } from './sheets.js';
 import { Patients } from './patients.js';
@@ -16,7 +16,7 @@ import { Symptoms } from './symptoms.js';
 // Defaults on first run
 const DEFAULTS = {
   spreadsheetId: '1l8UoblxznwV_zz7ZqnorOWZKfnmG3pZgVCT0DaSm0kU',
-  bridgeUrl: 'https://script.google.com/macros/s/AKfycbwss3LEIbDXNW0PpRJCxliRRdMMLNUqcNNMeMAVh6ZxkwiRKlTkAiYu-CxlXErwNR4Q/exec'
+  bridgeUrl: 'https://script.google.com/macros/s/AKfycbyLEWF-O49ifMKWYlPZ3bPvNN9w184Ddz_bGXhlWmmQD3SwZKG5aIiQ_bgapiKElmiE/exec'
 };
 (function ensureDefaults(){
   if (!localStorage.getItem('pr.sheet')) localStorage.setItem('pr.sheet', DEFAULTS.spreadsheetId);
@@ -144,7 +144,98 @@ function renderPatientsList(){
   });
 }
 
-// Dashboard
+// ===== Dashboard & field syncing =====
+
+let dashboardFieldBindingDone = false;
+
+// خرائط أسماء الحقول للـHPI/النصوص عند غياب data-bind-field
+const FIELD_FALLBACK_MAP = {
+  '#hpi-diagnosis':       'HPI Diagnosis',
+  '#hpi-initial':         'HPI Initial',
+  '#hpi-previous':        'HPI Previous',
+  '#hpi-current':         'HPI Current',
+  '#patient-assessment':  'Patient Assessment',
+  '#medication-list':     'Medication List',
+  '#latest-notes':        'Latest Notes'
+};
+
+const debouncedWrites = new WeakMap();
+function writeFieldDebounced(code, field, el){
+  // debounce لكل عنصر منفصل
+  if (!debouncedWrites.has(el)) {
+    debouncedWrites.set(el, Utils.debounce(async ()=>{
+      const value = (el.value ?? '').toString();
+      try {
+        await Sheets.writePatientField(code, field, value);
+        // sync local state
+        const idx = State.patients.findIndex(p=>p['Patient Code']===code);
+        if (idx>=0) State.patients[idx][field] = value;
+      } catch (e) {
+        console.error(e);
+        toast(`Failed to save ${field}.`, 'danger');
+      }
+    }, 350));
+  }
+  debouncedWrites.get(el)();
+}
+
+function bindDashboardFieldSyncOnce(){
+  if (dashboardFieldBindingDone) return;
+  dashboardFieldBindingDone = true;
+
+  // التفويض على مستوى الوثيقة: نلتقط input/change داخل #patient-modal
+  document.addEventListener('input', (e)=>{
+    const modal = q('#patient-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    const target = e.target;
+    if (!target) return;
+
+    // أولاً: عنصر يحمل data-bind-field (الكود الذي يُنشئه dashboard.js للبروفايل Bio)
+    let field = target.getAttribute && target.getAttribute('data-bind-field');
+
+    // ثانياً: fallback بناءً على المعرّف لإسناد HPI والحقول النصية
+    if (!field && target.id) {
+      const key = '#'+target.id;
+      if (FIELD_FALLBACK_MAP[key]) field = FIELD_FALLBACK_MAP[key];
+    }
+
+    if (!field) return;
+
+    const code = modal.dataset.code || (State.activePatient && State.activePatient['Patient Code']);
+    if (!code) return;
+
+    writeFieldDebounced(code, field, target);
+  }, true); // capture to catch early
+
+  document.addEventListener('change', (e)=>{
+    // على التغيير، نجبر كتابة فورية (بدون انتظار debounce) لموثوقية أعلى
+    const modal = q('#patient-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    const target = e.target;
+    if (!target) return;
+
+    let field = target.getAttribute && target.getAttribute('data-bind-field');
+    if (!field && target.id) {
+      const key = '#'+target.id;
+      if (FIELD_FALLBACK_MAP[key]) field = FIELD_FALLBACK_MAP[key];
+    }
+    if (!field) return;
+
+    const code = modal.dataset.code || (State.activePatient && State.activePatient['Patient Code']);
+    if (!code) return;
+
+    const value = (target.value ?? '').toString();
+    Sheets.writePatientField(code, field, value)
+      .then(()=>{
+        const idx = State.patients.findIndex(p=>p['Patient Code']===code);
+        if (idx>=0) State.patients[idx][field] = value;
+      })
+      .catch((err)=>{ console.error(err); toast(`Failed to save ${field}.`, 'danger'); });
+  }, true);
+}
+
 function openDashboardFor(code, asModal=false){
   const patient = State.patients.find(p=>p['Patient Code']===code);
   if(!patient) return;
@@ -172,6 +263,9 @@ function openDashboardFor(code, asModal=false){
   // لمس updated at
   const now=new Date().toISOString();
   Sheets.writePatientField(code,'Updated At',now).catch(()=>{});
+
+  // تأكد من تفعيل ربط المزامنة للحقول
+  bindDashboardFieldSyncOnce();
 
   if(asModal) openPatientModal();
 }
