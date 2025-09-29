@@ -1,12 +1,33 @@
 // js/importer.js
-// CSV Importer: open modal, read CSV, strict header/order validation,
-// show preview, and return validated rows for insertion.
+// CSV Importer (Updated):
+// - Strict headers per new spec
+// - Scrollable preview container (handled by CSS; table uses nowrap when wide)
+// - Tolerant CSV parser (quotes, commas inside quotes)
+// - Clear toasts for success/failure
+// - Returns validated rows (array of arrays) for the app to map into patient objects
 
 import { UI } from './ui.js';
 
 let Bus, State;
 
 const EXPECTED_HEADERS = [
+  'Patient Code',
+  'Patient Name',
+  'Patient Age',
+  'Room',
+  'Diagnosis',
+  'Section',
+  'Admitting Provider',
+  'Diet',
+  'Isolation',
+  'Comments',
+  'Symptoms (comma-separated)',
+  'Symptoms Notes (JSON map)',
+  'Labs Abnormal (comma-separated)'
+];
+
+// للكشف عن القالب القديم وإعطاء رسالة مفيدة
+const LEGACY_HEADERS = [
   'Patient Code',
   'Patient Name',
   'Patient Age',
@@ -31,58 +52,23 @@ function parseCSV(text) {
   const rows = [];
   let i = 0, field = '', row = [], inQuotes = false;
 
-  function pushField() {
-    row.push(field);
-    field = '';
-  }
-  function pushRow() {
-    rows.push(row);
-    row = [];
-  }
+  function pushField() { row.push(field); field = ''; }
+  function pushRow()   { rows.push(row); row = []; }
 
   while (i < text.length) {
     const ch = text[i];
 
     if (inQuotes) {
       if (ch === '"') {
-        if (text[i + 1] === '"') {
-          field += '"'; // Escaped quote
-          i += 2;
-          continue;
-        } else {
-          inQuotes = false;
-          i++;
-          continue;
-        }
-      } else {
-        field += ch;
-        i++;
-        continue;
-      }
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      } else { field += ch; i++; continue; }
     } else {
-      if (ch === '"') {
-        inQuotes = true;
-        i++;
-        continue;
-      }
-      if (ch === ',') {
-        pushField();
-        i++;
-        continue;
-      }
-      if (ch === '\n') {
-        pushField();
-        pushRow();
-        i++;
-        continue;
-      }
-      if (ch === '\r') {
-        // handle CRLF
-        i++;
-        continue;
-      }
-      field += ch;
-      i++;
+      if (ch === '"') { inQuotes = true; i++; continue; }
+      if (ch === ',') { pushField(); i++; continue; }
+      if (ch === '\n') { pushField(); pushRow(); i++; continue; }
+      if (ch === '\r') { i++; continue; } // CRLF
+      field += ch; i++;
     }
   }
   // آخر حقل/سطر
@@ -92,10 +78,28 @@ function parseCSV(text) {
   return rows;
 }
 
+/** قص/توسيع الصف ليتطابق مع عدد الأعمدة المتوقّع */
+function normalizeRowLength(row, targetLen) {
+  const out = new Array(targetLen).fill('');
+  for (let i = 0; i < Math.min(row.length, targetLen); i++) {
+    out[i] = (row[i] ?? '').toString();
+  }
+  return out;
+}
+
 /** التحقق الصارم من ترتيب الأعمدة */
 function validateHeaders(headerRow) {
   if (!headerRow) return { ok: false, error: 'Missing header row.' };
   const got = headerRow.map(h => (h || '').trim());
+
+  // تحذير واضح لو الملف من القالب القديم
+  if (got.length === LEGACY_HEADERS.length && LEGACY_HEADERS.every((h, i) => h === got[i])) {
+    return {
+      ok: false,
+      error: 'This CSV matches an old template (with "Cause Of Admission"). Please export the new template and try again.'
+    };
+  }
+
   if (got.length !== EXPECTED_HEADERS.length) {
     return { ok: false, error: `Expected ${EXPECTED_HEADERS.length} columns, got ${got.length}.` };
   }
@@ -110,19 +114,22 @@ function validateHeaders(headerRow) {
   return { ok: true };
 }
 
-/** عرض معاينة بسيطة (أول 10 أسطر) */
+/** عرض معاينة بسيطة (أول 10 أسطر بيانات) داخل حاوية قابلة للتمرير */
 function renderPreview(rows) {
   const root = els.preview();
   root.innerHTML = '';
+
   const table = document.createElement('table');
   table.className = 'mono small';
   table.style.width = '100%';
   table.style.borderCollapse = 'collapse';
+  table.style.whiteSpace = 'nowrap'; // للسماح بالتمرير الأفقي عند الحاجة
 
   const maxRows = Math.min(rows.length, 11); // header + 10
+
   for (let r = 0; r < maxRows; r++) {
     const tr = document.createElement('tr');
-    rows[r].forEach((cell, i) => {
+    rows[r].forEach((cell) => {
       const td = document.createElement(r === 0 ? 'th' : 'td');
       td.textContent = cell ?? '';
       td.style.border = '1px solid var(--border)';
@@ -131,6 +138,9 @@ function renderPreview(rows) {
       if (r === 0) {
         td.style.background = 'rgba(124,156,255,.10)';
         td.style.fontWeight = '700';
+        td.style.position = 'sticky';
+        td.style.top = '0';
+        td.style.zIndex = '1';
       }
       tr.appendChild(td);
     });
@@ -157,12 +167,14 @@ function open() {
   validatedRows = [];
   els.file().value = '';
   els.preview().innerHTML = '';
-  UI.openModal('import-modal');
+  const m = els.modal();
+  if (m) m.classList.remove('hidden');
 }
 
 /** إغلاق المودال */
 function close() {
-  UI.closeModal('import-modal');
+  const m = els.modal();
+  if (m) m.classList.add('hidden');
 }
 
 /** قراءة الملف والتحقق والمعاينة */
@@ -181,7 +193,7 @@ async function handleFileChange() {
       return;
     }
 
-    const header = rows[0];
+    const header = rows[0].map(x => (x ?? '').toString().trim());
     const check = validateHeaders(header);
     if (!check.ok) {
       validatedRows = [];
@@ -190,12 +202,16 @@ async function handleFileChange() {
       return;
     }
 
-    // صفوف البيانات (اترك الأعمدة الفارغة كما هي)
-    const dataRows = rows.slice(1).filter(r => r.some(cell => (cell ?? '').toString().trim() !== ''));
-    validatedRows = dataRows.map(r => r.map(c => (c ?? '').toString()));
+    // صفوف البيانات مع ضبط الطول لعدد الأعمدة المتوقع
+    const dataRows = rows
+      .slice(1)
+      .filter(r => r.some(cell => (cell ?? '').toString().trim() !== ''))
+      .map(r => normalizeRowLength(r, EXPECTED_HEADERS.length));
 
-    // عرِض المعاينة
-    renderPreview([header, ...validatedRows.slice(0, 10)]);
+    validatedRows = dataRows;
+
+    // المعاينة: عرض العناوين + أول 10 صفوف بيانات
+    renderPreview([EXPECTED_HEADERS, ...validatedRows.slice(0, 10)]);
 
     if (validatedRows.length === 0) {
       UI.toast('CSV contains no non-empty data rows.', 'warn');
@@ -215,8 +231,9 @@ export const Importer = {
     Bus = bus;
     State = state;
 
-    // ربط تغير الملف
-    els.file().addEventListener('change', handleFileChange);
+    // ربط تغيّر الملف
+    const f = els.file();
+    if (f) f.addEventListener('change', handleFileChange);
   },
 
   open,
