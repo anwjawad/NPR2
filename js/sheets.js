@@ -1,6 +1,5 @@
 // js/sheets.js
-// Google Apps Script Bridge client (JSONP-first; avoids CORS)
-// Now implements real bulk deletion.
+// Apps Script Bridge client (JSONP-first; avoids CORS). Includes fast bulk delete.
 
 const TABS = { PATIENTS: 'Patients', ESAS: 'ESAS', CTCAE: 'CTCAE', LABS: 'Labs' };
 
@@ -89,15 +88,13 @@ export const Sheets = {
   async init(config){
     CONFIG = {
       spreadsheetId: config.spreadsheetId,
-      bridgeUrl: (config.bridgeUrl || '').replace(/\/$/, ''), // drop trailing slash
+      bridgeUrl: (config.bridgeUrl || '').replace(/\/$/, ''),
       useOAuth: false
     };
     return true;
   },
 
-  async loadAll(){
-    return bridgeCallJSONP('loadAll', {});
-  },
+  async loadAll(){ return bridgeCallJSONP('loadAll', {}); },
 
   async ensureSection(){ await bridgeCallJSONP('ensureSection', {}); return true; },
   async createSection(){ return true; },
@@ -111,7 +108,7 @@ export const Sheets = {
 
   async bulkInsertPatients(objs){
     const rows = (objs||[]).map(o => toRowFromObject(o, TABS.PATIENTS));
-    const batches = chunk(rows, 5); // keep URL size safe
+    const batches = chunk(rows, 5); // لتجنّب طول الرابط
     for (const batch of batches){ await bridgeCallJSONP('bulkInsertPatients', { rows: batch }); }
     return true;
   },
@@ -143,33 +140,20 @@ export const Sheets = {
     await bridgeCallJSONP('writeLabs', { row }); return true;
   },
 
-  // ===== Bulk deletion implementations =====
-  // 1) احذف جميع مرضى قسم محدّد (لو تحب تعتمد عليها من الواجهة)
+  // ===== أسرع حذف جماعي =====
   async deletePatientsInSection(section){
     if (!section) return false;
-    // جِب كل البيانات ثم صفّي الأكواد بحسب القسم
-    const data = await this.loadAll().catch(()=>null);
-    if (!data || !Array.isArray(data.patients)) return false;
-    const codes = data.patients
-      .filter(p => (p.Section || 'Default') === section)
-      .map(p => p['Patient Code'])
-      .filter(Boolean);
-    if (!codes.length) return true;
-    await this.bulkDeletePatients(codes);
+    await bridgeCallJSONP('deletePatientsInSection', { section });
     return true;
   },
 
-  // 2) حذف دفعي عبر تكرار نداء deletePatient (JSONP)
   async bulkDeletePatients(codes){
     const list = Array.isArray(codes) ? codes.filter(Boolean) : [];
     if (!list.length) return true;
-    // نفّذها على دفعات صغيرة لتجنّب ضغط الشبكة
-    const batches = chunk(list, 5);
-    for (const batch of batches){
-      for (const code of batch){
-        try{ await this.deletePatient(code); }
-        catch(e){ console.warn('Failed to delete', code, e); /* نكمل */ }
-      }
+    // دفعات أكبر (25) → نداءات قليلة جدًا
+    const batches = chunk(list, 25);
+    for (const b of batches){
+      await bridgeCallJSONP('bulkDeletePatients', { codes: b });
     }
     return true;
   }
