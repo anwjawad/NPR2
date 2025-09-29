@@ -43,7 +43,9 @@
         </div>
       </div>
 
-      <a id="open-settings" class="settings-link">Settings</a>
+      <div class="section">
+        <button id="open-settings" class="btn w100" type="button">Settings</button>
+      </div>
     </aside>
 
     <!-- Main -->
@@ -74,7 +76,7 @@
           </div>
         </section>
 
-        <!-- (Dashboard moved into modal) -->
+        <!-- Dashboard column not used (dashboard is in modal) -->
         <section id="dashboard-col" style="display:none;"></section>
       </div>
     </main>
@@ -132,7 +134,7 @@
   </div>
 
   <!-- Patient Dashboard modal (fullscreen) -->
-  <div id="patient-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div id="patient-modal" class="modal hidden" role="dialog" aria-modal="true" data-code="">
     <div class="modal-card modal-card-full">
       <div class="modal-header">
         <h3 id="patient-modal-title">Patient Dashboard</h3>
@@ -150,7 +152,6 @@
             </div>
           </div>
 
-          <!-- Panel -->
           <div id="dashboard-panel" data-empty="true">
             <div class="empty">
               <div class="dots"></div>
@@ -167,7 +168,7 @@
               <div id="bio-grid" class="grid grid-2"></div>
             </div>
 
-            <!-- HPI / Texts -->
+            <!-- HPI -->
             <div class="section-block">
               <div class="block-head"><div class="block-title">HPI</div></div>
               <div class="grid grid-2">
@@ -234,460 +235,10 @@
     </div>
   </div>
 
-  <!-- Scripts -->
+  <!-- Entry point: App.start -->
   <script type="module">
-    // === Defaults (Requirement #1) ===
-    const DEFAULTS = {
-      spreadsheetId: "1l8UoblxznwV_zz7ZqnorOWZKfnmG3pZgVCT0DaSm0kU",
-      bridgeUrl: "https://script.google.com/macros/s/AKfycbyLEWF-O49ifMKWYlPZ3bPvNN9w184Ddz_bGXhlWmmQD3SwZKG5aIiQ_bgapiKElmiE/exec"
-    };
-    if (!localStorage.getItem('pr.sheet')) {
-      localStorage.setItem('pr.sheet', DEFAULTS.spreadsheetId);
-    }
-    if (!localStorage.getItem('pr.bridge')) {
-      localStorage.setItem('pr.bridge', DEFAULTS.bridgeUrl);
-    }
-
-    import { UI } from './js/ui.js';
-    import { Utils } from './js/utils.js';
-    import { Sheets } from './js/sheets.js';
-    import { Patients } from './js/patients.js';
-    import { ESAS } from './js/esas.js';     // kept for compatibility (not rendered)
-    import { CTCAE } from './js/ctcae.js';   // kept for compatibility (not rendered)
-    import { Labs } from './js/labs.js';
-    import { Dashboard } from './js/dashboard.js';
-    import { Importer } from './js/importer.js';
-    import { AIModule } from './js/ai.js';
-    import { Symptoms } from './js/symptoms.js'; // NEW unified symptoms module (to be added next)
-
-    // --- Simple event bus ---
-    const Bus = {
-      _handlers: {},
-      on(evt, fn){ (this._handlers[evt] ||= []).push(fn); },
-      emit(evt, data){ (this._handlers[evt]||[]).forEach(fn=>fn(data)); }
-    };
-
-    // --- Global state ---
-    const State = {
-      config: {
-        spreadsheetId: localStorage.getItem('pr.sheet') || '',
-        bridgeUrl: localStorage.getItem('pr.bridge') || '',
-        aiEndpoint: localStorage.getItem('pr.ai') || '',
-        useOAuth: false
-      },
-      sections: ['Default'],
-      activeSection: 'Default',
-      patients: [],
-      esas: [],
-      ctcae: [],
-      labs: []
-    };
-
-    // --- Init modules ---
-    UI.init(Bus);
-    Patients.init(Bus, State);
-    ESAS.init(Bus, State);
-    CTCAE.init(Bus, State);
-    Labs.init(Bus, State);
-    Dashboard.init(Bus, State);
-    Importer.init(Bus, State);
-    AIModule.init(Bus, State);
-    Symptoms.init(Bus, State); // NEW
-
-    // --- UI helpers ---
-    const $ = (s)=>document.querySelector(s);
-    const $$ = (s)=>Array.from(document.querySelectorAll(s));
-    const listEl = $('#patients-list');
-    const sectionsEl = $('#sections-list');
-
-    // Compute Abnormal labs summary (↑/↓) for patient (Requirement #3)
-    const LAB_REF = {
-      'WBC': [4.0, 11.0],
-      'HGB': [12.0, 16.0],
-      'PLT': [150, 450],
-      'ANC': [1.5, 8.0],
-      'CRP': [0, 5],
-      'Albumin': [3.5, 5.0],
-      'Sodium (Na)': [135, 145],
-      'Potassium (K)': [3.5, 5.1],
-      'Chloride (Cl)': [98, 107],
-      'Calcium (Ca)': [8.5, 10.5],
-      'Phosphorus (Ph)': [2.5, 4.5],
-      'Alkaline Phosphatase (ALP)': [44, 147],
-      'Creatinine (Scr)': [0.6, 1.3],
-      'BUN': [7, 20],
-      'Total Bile': [0.1, 1.2]
-    };
-    function parseNum(v){
-      if (v === null || v === undefined) return null;
-      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-      const m = String(v).trim().match(/-?\d+(\.\d+)?/);
-      if (!m) return null;
-      const n = parseFloat(m[0]);
-      return Number.isNaN(n) ? null : n;
-    }
-    function abnormalSummary(labsRecord){
-      if (!labsRecord) return '';
-      const items = [];
-      Object.keys(LAB_REF).forEach(k=>{
-        const ref = LAB_REF[k];
-        const n = parseNum(labsRecord[k]);
-        if (n == null) return;
-        if (n < ref[0]) items.push(k.replace('Alkaline Phosphatase (ALP)', 'ALP').replace('Creatinine (Scr)','Scr').replace('Sodium (Na)','Na').replace('Potassium (K)','K').replace('Chloride (Cl)','Cl').replace('Calcium (Ca)','Ca').replace('Phosphorus (Ph)','Ph') + '↓');
-        else if (n > ref[1]) items.push(k.replace('Alkaline Phosphatase (ALP)', 'ALP').replace('Creatinine (Scr)','Scr').replace('Sodium (Na)','Na').replace('Potassium (K)','K').replace('Chloride (Cl)','Cl').replace('Calcium (Ca)','Ca').replace('Phosphorus (Ph)','Ph') + '↑');
-      });
-      return items.join(', ');
-    }
-
-    function renderSections(){
-      sectionsEl.innerHTML = '';
-      State.sections.forEach(name=>{
-        const btn = document.createElement('button');
-        btn.className = 'pill ' + (name===State.activeSection?'active':'');
-        btn.textContent = name;
-        btn.addEventListener('click', ()=>{ State.activeSection = name; $('#active-section-name').textContent = name; renderPatients(); });
-        sectionsEl.appendChild(btn);
-      });
-    }
-
-    function symptomsPreview(p){
-      // Use unified fields (Patients sheet): "Symptoms" and "Symptoms Notes"
-      const s = (p['Symptoms']||'').split(',').map(x=>x.trim()).filter(Boolean);
-      if (!s.length) return '';
-      return s.slice(0,3).join(', ') + (s.length>3? ` (+${s.length-3})` : '');
-    }
-
-    // Build modern, info-rich patient row (Requirement #3)
-    function renderPatients(){
-      const q = ($('#search').value||'').toLowerCase().trim();
-      listEl.innerHTML = '';
-      const filterVal = $('.tabs .tab.active')?.dataset.filter || 'all';
-      const pats = State.patients
-        .filter(p => (p.Section||'Default') === State.activeSection)
-        .filter(p => !q || JSON.stringify(p).toLowerCase().includes(q))
-        .filter(p => {
-          if (filterVal === 'all') return true;
-          return filterVal === 'done' ? !!p['Done'] : !p['Done'];
-        });
-
-      pats.forEach(p=>{
-        const row = document.createElement('div'); row.className = 'row patient-card';
-        const labs = Labs.getForPatient(p['Patient Code']);
-        const labsAbn = p['Labs Abnormal'] || abnormalSummary(labs);
-        const symPrev = symptomsPreview(p);
-        const doneBadge = p['Done'] ? '<span class="status done">Done</span>' : '<span class="status open">Open</span>';
-        row.innerHTML = `
-          <div class="row-main">
-            <div class="row-header">
-              <div class="row-title linkish" data-code="${p['Patient Code']}">${p['Patient Name']||'(Unnamed)'}</div>
-              ${doneBadge}
-            </div>
-            <div class="row-sub">${p['Patient Age']||'—'} yrs • Room ${p['Room']||'—'} • ${p['Diagnosis']||'—'}</div>
-            <div class="row-tags">
-              <span class="row-tag">${p['Section']||'Default'}</span>
-              ${labsAbn ? `<span class="row-chip abn">${labsAbn}</span>` : '' }
-              ${symPrev ? `<span class="row-chip sym">${symPrev}</span>` : '' }
-            </div>
-          </div>
-          <div class="row-code mono">${p['Patient Code']}</div>
-        `;
-        // Click only on the patient name opens dashboard modal (Requirement #2)
-        row.querySelector('.row-title').addEventListener('click', (e)=>{
-          e.stopPropagation();
-          openPatient(p['Patient Code'], /*openModal*/ true);
-        });
-        listEl.appendChild(row);
-      });
-      if (!pats.length) {
-        const empty = document.createElement('div'); empty.className='empty small'; empty.textContent='No patients in this view.';
-        listEl.appendChild(empty);
-      }
-    }
-
-    function openPatient(code, openAsModal=false){
-      const p = State.patients.find(x=>x['Patient Code']===code);
-      if (!p) return;
-      $('#dashboard-title').textContent = 'Dashboard — ' + (p['Patient Name'] || p['Patient Code']);
-      $('#patient-modal-title').textContent = (p['Patient Name'] || p['Patient Code']);
-
-      const esas = ESAS.getForPatient(code);
-      const ctcae = CTCAE.getForPatient(code);
-      const labs = Labs.getForPatient(code);
-      Dashboard.bindPatient(p, { esas, ctcae, labs });
-
-      // Render unified symptoms section (Requirement #5)
-      Symptoms.render(p['Patient Code'], {
-        symptoms: (p['Symptoms']||'').split(',').map(s=>s.trim()).filter(Boolean),
-        notes: safeParseJSON(p['Symptoms Notes']||'{}')
-      });
-
-      $('#dashboard-panel').dataset.empty = 'false';
-
-      // bind bio inputs to write-through
-      document.querySelectorAll('#bio-grid [data-bind-field], textarea[data-bind-field]').forEach(inp=>{
-        inp.addEventListener('change', ()=>savePatientField(p['Patient Code'], inp.getAttribute('data-bind-field'), inp.value));
-        inp.addEventListener('blur',   ()=>savePatientField(p['Patient Code'], inp.getAttribute('data-bind-field'), inp.value));
-      });
-
-      if (openAsModal) {
-        openPatientModal();
-      }
-    }
-
-    async function savePatientField(code, field, value){
-      try {
-        await Sheets.writePatientField(code, field, value);
-        // keep local state in sync
-        const idx = State.patients.findIndex(x=>x['Patient Code']===code);
-        if (idx>=0) State.patients[idx][field] = value;
-      } catch(err){
-        console.error(err);
-      }
-    }
-
-    function safeParseJSON(s){
-      try { return JSON.parse(s); } catch { return {}; }
-    }
-
-    // === Patient modal open/close (Requirement #2) ===
-    function openPatientModal(){
-      const m = $('#patient-modal');
-      m.classList.remove('hidden');
-      document.documentElement.style.overflow='hidden';
-      // ESC to close
-      const onKey = (ev)=>{
-        if (ev.key==='Escape') {
-          closePatientModal();
-          document.removeEventListener('keydown', onKey);
-        }
-      };
-      document.addEventListener('keydown', onKey);
-    }
-    function closePatientModal(){
-      const m = $('#patient-modal');
-      m.classList.add('hidden');
-      document.documentElement.style.overflow='';
-    }
-    // close via X or footer button (already wired by [data-close-modal], but keep explicit)
-    $$('[data-close-modal="patient-modal"]').forEach(b=>{
-      b.addEventListener('click', closePatientModal);
-    });
-
-    // --- Buttons ---
-    $('#btn-add-section').onclick = async ()=>{
-      const name = prompt('New section name') || '';
-      if (!name.trim()) return;
-      if (!State.sections.includes(name)) State.sections.push(name);
-      State.activeSection = name;
-      $('#active-section-name').textContent = name;
-      renderSections(); renderPatients();
-      try { await Sheets.createSection(name); } catch{}
-    };
-
-    $('#btn-rename-section').onclick = async ()=>{
-      const oldName = State.activeSection;
-      const newName = prompt('Rename section', oldName) || '';
-      if (!newName.trim() || newName===oldName) return;
-      try {
-        await Sheets.renameSection(oldName, newName);
-        State.sections = State.sections.map(s=>s===oldName?newName:s);
-        State.patients.forEach(p=>{ if((p.Section||'Default')===oldName) p.Section=newName; });
-        State.activeSection = newName;
-        $('#active-section-name').textContent = newName;
-        renderSections(); renderPatients();
-      } catch(e){ console.error(e); }
-    };
-
-    // Delete section — safe: can't remove last; move patients to Default (Requirement #9)
-    $('#btn-delete-section').onclick = async ()=>{
-      const current = State.activeSection;
-      if (!current) return;
-      if (State.sections.length <= 1) {
-        alert('Cannot delete the last section.');
-        return;
-      }
-      if (!confirm(`Delete section “${current}”? Patients will be moved to “Default”.`)) return;
-      try {
-        // ensure Default exists
-        if (!State.sections.includes('Default')) {
-          await Sheets.createSection('Default');
-          State.sections.push('Default');
-        }
-        // move patients in this section to Default
-        const inSection = State.patients.filter(p => (p.Section||'Default') === current);
-        for (const p of inSection) {
-          p.Section = 'Default';
-          try { await Sheets.writePatientField(p['Patient Code'], 'Section', 'Default'); } catch(e){ console.warn(e); }
-        }
-        // delete the section itself
-        await Sheets.deleteSection(current);
-        State.sections = State.sections.filter(s=>s!==current);
-        State.activeSection = State.sections[0] || 'Default';
-        $('#active-section-name').textContent = State.activeSection;
-        renderSections(); renderPatients();
-        toast('Section deleted and patients moved to “Default”.','success');
-      } catch(e){ console.error(e); toast('Failed to delete section.', 'danger'); }
-    };
-
-    $('#btn-new-patient').onclick = async ()=>{
-      const code = 'P' + Math.random().toString(36).slice(2,8).toUpperCase();
-      const obj = {
-        'Patient Code': code,'Patient Name':'','Patient Age':'','Room':'','Admitting Provider':'','Diagnosis':'','Diet':'','Isolation':'','Comments':'',
-        'Section': State.activeSection, 'Done': false, 'Updated At': new Date().toISOString(),
-        'HPI Diagnosis':'','HPI Previous':'','HPI Current':'','HPI Initial':'','Patient Assessment':'','Medication List':'','Latest Notes':'',
-        'Symptoms':'','Symptoms Notes':'{}','Labs Abnormal':''
-      };
-      try{
-        await Sheets.insertPatient(obj);
-        State.patients.push(obj);
-        renderPatients();
-      }catch(e){ console.error(e); }
-    };
-
-    $('#btn-refresh').onclick = loadAll;
-
-    // Export CSV Template (Requirement #7)
-    $('#btn-export-template').onclick = ()=>{
-      const headers = [
-        'Patient Code','Patient Name','Patient Age','Room','Diagnosis','Section',
-        'Admitting Provider','Diet','Isolation','Comments',
-        'Symptoms (comma-separated)','Symptoms Notes (JSON map)','Labs Abnormal (comma-separated)'
-      ];
-      const csv = headers.join(',') + '\n';
-      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'palliative_rounds_template.csv';
-      a.click();
-      URL.revokeObjectURL(a.href);
-      toast('Template downloaded.','success');
-    };
-
-    // Delete all patients in current section (extra requirement)
-    $('#btn-delete-all-pats').onclick = async ()=>{
-      const sec = State.activeSection;
-      if (!sec) return;
-      const list = State.patients.filter(p => (p.Section||'Default') === sec);
-      if (!list.length) { toast('No patients in this section.','warn'); return; }
-      const ok = confirm(`Delete ALL ${list.length} patients in section “${sec}”? This cannot be undone.`);
-      if (!ok) return;
-      try{
-        // Remove from UI first
-        State.patients = State.patients.filter(p => (p.Section||'Default') !== sec);
-        renderPatients();
-        // Then delete from Sheets
-        await Promise.allSettled(list.map(p=>Sheets.deletePatient(p['Patient Code'])));
-        toast(`Deleted ${list.length} patients in “${sec}”.`, 'success');
-      }catch(e){ console.error(e); toast('Failed to delete all patients from Sheets.', 'danger'); }
-    };
-
-    // Import flow (unchanged mapping; preview scrolling handled in CSS/next styles update)
-    $('#btn-import').onclick = ()=>{
-      document.getElementById('csv-preview').innerHTML='';
-      document.getElementById('csv-file-input').value='';
-      document.getElementById('btn-import-confirm').onclick = async ()=>{
-        const rows = Importer.consumeValidatedRows();
-        if (!rows.length) { alert('No rows to import.'); return; }
-        // map rows to patient objects
-        const objs = rows.map(r => ({
-          'Patient Code': r[0] || ('P'+Math.random().toString(36).slice(2,8).toUpperCase()),
-          'Patient Name': r[1]||'','Patient Age': r[2]||'','Room': r[3]||'','Admitting Provider': r[4]||'',
-          'Diagnosis': r[5]||'','Diet': r[6]||'','Isolation': r[7]||'','Comments': r[8]||'',
-          'Section': State.activeSection,'Done': false,'Updated At': new Date().toISOString(),
-          'HPI Diagnosis':'','HPI Previous':'','HPI Current':'','HPI Initial':'','Patient Assessment':'','Medication List':'','Latest Notes':'',
-          'Symptoms':'','Symptoms Notes':'{}','Labs Abnormal':''
-        }));
-        try{
-          await Sheets.bulkInsertPatients(objs);
-          State.patients.push(...objs);
-          renderPatients();
-          document.querySelector('[data-close-modal="import-modal"]').click();
-        }catch(e){ console.error(e); }
-      };
-      document.getElementById('import-modal').classList.remove('hidden');
-    };
-
-    $('#open-settings').onclick = ()=>{
-      $('#set-spreadsheet-id').value = State.config.spreadsheetId;
-      $('#set-bridge-url').value = State.config.bridgeUrl;
-      $('#set-ai-endpoint').value = State.config.aiEndpoint;
-      $('#settings-modal').classList.remove('hidden');
-    };
-    $('#btn-settings-save').onclick = async ()=>{
-      State.config.spreadsheetId = $('#set-spreadsheet-id').value.trim();
-      State.config.bridgeUrl = $('#set-bridge-url').value.trim();
-      State.config.aiEndpoint = $('#set-ai-endpoint').value.trim();
-      localStorage.setItem('pr.sheet', State.config.spreadsheetId);
-      localStorage.setItem('pr.bridge', State.config.bridgeUrl);
-      localStorage.setItem('pr.ai', State.config.aiEndpoint);
-      document.getElementById('settings-modal').classList.add('hidden');
-      await initSheets(); await loadAll();
-    };
-
-    // ESAS/CTCAE/Labs write-through from modules (kept)
-    Bus.on('esas.changed', async ({code,record})=>{
-      try{ await Sheets.writeESAS(code, record); }catch(e){ console.error(e); }
-    });
-    Bus.on('ctcae.changed', async ({code,record})=>{
-      try{ await Sheets.writeCTCAE(code, record); }catch(e){ console.error(e); }
-    });
-    Bus.on('labs.changed', async ({code,record})=>{
-      try{ await Sheets.writeLabs(code, record); }catch(e){ console.error(e); }
-    });
-
-    // Symptoms write-through (Requirement #4/#5)
-    Bus.on('symptoms.changed', async ({ code, symptoms, notes })=>{
-      try {
-        const s = (symptoms||[]).join(', ');
-        const n = JSON.stringify(notes||{});
-        await Sheets.writePatientField(code, 'Symptoms', s);
-        await Sheets.writePatientField(code, 'Symptoms Notes', n);
-        // local sync
-        const idx = State.patients.findIndex(p => p['Patient Code']===code);
-        if (idx>=0) {
-          State.patients[idx]['Symptoms'] = s;
-          State.patients[idx]['Symptoms Notes'] = n;
-        }
-        renderPatients(); // update preview chips
-      } catch(e){ console.error(e); toast('Failed to sync symptoms.', 'danger'); }
-    });
-
-    // --- Init & load ---
-    async function initSheets(){
-      if (!State.config.spreadsheetId || !State.config.bridgeUrl) return;
-      try{
-        await Sheets.init({ spreadsheetId: State.config.spreadsheetId, bridgeUrl: State.config.bridgeUrl, useOAuth: false });
-      }catch(e){ console.error(e); }
-    }
-
-    async function loadAll(){
-      if (!State.config.spreadsheetId || !State.config.bridgeUrl) return;
-      try{
-        const data = await Sheets.loadAll();
-        State.sections = data.sections?.length? data.sections : ['Default'];
-        State.patients = data.patients || [];
-        State.esas = data.esas || [];
-        State.ctcae = data.ctcae || [];
-        State.labs = data.labs || [];
-        if (!State.sections.includes(State.activeSection)) State.activeSection = State.sections[0]||'Default';
-        $('#active-section-name').textContent = State.activeSection;
-        renderSections(); renderPatients();
-      }catch(e){ console.error(e); }
-    }
-
-    function toast(msg, type='info'){ UI.toast(msg, type); }
-
-    // Filter tabs
-    $$('.tabs .tab').forEach(t=>{
-      t.addEventListener('click', ()=>{
-        $$('.tabs .tab').forEach(x=>x.classList.remove('active'));
-        t.classList.add('active');
-        renderPatients();
-      });
-    });
-
-    await initSheets();
-    await loadAll();
+    import { App } from './js/app.js';
+    App.start();
   </script>
 </body>
 </html>
