@@ -1,5 +1,7 @@
 // js/sheets.js
-// Apps Script Bridge client (JSONP-first; avoids CORS). Includes fast bulk delete.
+// Apps Script Bridge client (JSONP-first to avoid CORS on GitHub Pages)
+// - Fast bulk delete (server-side) and fast bulk insert (adaptive JSONP batching)
+// - Minimizes number of requests by packing as many rows as possible per URL safely.
 
 const TABS = { PATIENTS: 'Patients', ESAS: 'ESAS', CTCAE: 'CTCAE', LABS: 'Labs' };
 
@@ -28,12 +30,7 @@ const SCHEMA = {
 
 let CONFIG = { spreadsheetId:'', bridgeUrl:'', useOAuth:false };
 
-function assertConfig(){
-  if (!CONFIG.spreadsheetId) throw new Error('Spreadsheet ID is required.');
-  if (!CONFIG.bridgeUrl)     throw new Error('Bridge URL is required.');
-}
-
-// ---------- JSONP core ----------
+// ===== JSONP core =====
 function jsonp(url){
   return new Promise((resolve, reject)=>{
     const cbName = 'pr_cb_' + Math.random().toString(36).slice(2);
@@ -41,13 +38,7 @@ function jsonp(url){
     const full = `${url}${sep}callback=${cbName}`;
     const s = document.createElement('script');
     const timer = setTimeout(()=>{ cleanup(); reject(new Error('Bridge timeout')); }, 30000);
-
-    function cleanup(){
-      clearTimeout(timer);
-      try{ delete window[cbName]; }catch{}
-      if (s.parentNode) s.parentNode.removeChild(s);
-    }
-
+    function cleanup(){ clearTimeout(timer); try{ delete window[cbName]; }catch{} if (s.parentNode) s.parentNode.removeChild(s); }
     window[cbName] = function(resp){
       cleanup();
       try{
@@ -55,11 +46,15 @@ function jsonp(url){
         else resolve(resp.data);
       }catch(e){ reject(e); }
     };
-
     s.onerror = ()=>{ cleanup(); reject(new Error('Bridge network error')); };
     s.src = full;
     document.head.appendChild(s);
   });
+}
+
+function assertConfig(){
+  if (!CONFIG.spreadsheetId) throw new Error('Spreadsheet ID is required.');
+  if (!CONFIG.bridgeUrl)     throw new Error('Bridge URL is required.');
 }
 
 function buildQuery(action, payload){
@@ -76,14 +71,43 @@ async function bridgeCallJSONP(action, payload){
   return jsonp(url);
 }
 
-// ---------- helpers ----------
+// ===== helpers =====
 function toRowFromObject(obj, tabName){
   const cols = SCHEMA[tabName] || [];
   return cols.map(c => (obj && obj[c] != null) ? obj[c] : '');
 }
 function chunk(arr, n){ const out=[]; for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n)); return out; }
 
-// ---------- Public API ----------
+// تقدير طول الرابط الناتج لإرسال دفعات كبيرة بأمان
+const MAX_URL_LEN = 9000; // قيمة محافظة، تعمل جيدًا على GAS/JSONP
+function willFitInUrl(action, payload){
+  const url = buildQuery(action, payload);
+  return url.length <= MAX_URL_LEN;
+}
+function packRowsAdaptive(rows){
+  // نبني دفعات bulkInsertPatients بحجم أقصى مسموح به لطول الرابط
+  const batches = [];
+  let cur = [];
+  for (const r of rows){
+    const candidate = [...cur, r];
+    if (willFitInUrl('bulkInsertPatients', { rows: candidate })) {
+      cur = candidate;
+    } else {
+      if (cur.length) batches.push(cur);
+      // لو صف واحد طويل جدًا، أرسله وحده
+      cur = [r];
+      // تأكيد أخير
+      if (!willFitInUrl('bulkInsertPatients', { rows: cur })) {
+        // آخر حل: قطع الصف لنصّين (نادر جدًا)، هنا نرسلّه وحده على أي حال.
+        batches.push(cur); cur = [];
+      }
+    }
+  }
+  if (cur.length) batches.push(cur);
+  return batches;
+}
+
+// ===== Public API =====
 export const Sheets = {
   async init(config){
     CONFIG = {
@@ -106,21 +130,23 @@ export const Sheets = {
     await bridgeCallJSONP('insertPatient', { row }); return true;
   },
 
+  // ===== Fast bulk insert (adaptive JSONP batches) =====
   async bulkInsertPatients(objs){
     const rows = (objs||[]).map(o => toRowFromObject(o, TABS.PATIENTS));
-    const batches = chunk(rows, 5); // لتجنّب طول الرابط
-    for (const batch of batches){ await bridgeCallJSONP('bulkInsertPatients', { rows: batch }); }
+    if (!rows.length) return true;
+    const batches = packRowsAdaptive(rows);
+    for (const batch of batches){
+      await bridgeCallJSONP('bulkInsertPatients', { rows: batch });
+    }
     return true;
   },
 
   async writePatientField(code, field, value){
     await bridgeCallJSONP('writePatientField', { code, field, value }); return true;
   },
-
   async writePatientFields(code, fields){
     await bridgeCallJSONP('writePatientFields', { code, fields }); return true;
   },
-
   async deletePatient(code){
     await bridgeCallJSONP('deletePatient', { code }); return true;
   },
@@ -129,31 +155,29 @@ export const Sheets = {
     const row = toRowFromObject(obj, TABS.ESAS);
     await bridgeCallJSONP('writeESAS', { row }); return true;
   },
-
   async writeCTCAE(code, obj){
     const row = toRowFromObject(obj, TABS.CTCAE);
     await bridgeCallJSONP('writeCTCAE', { row }); return true;
   },
-
   async writeLabs(code, obj){
     const row = toRowFromObject(obj, TABS.LABS);
     await bridgeCallJSONP('writeLabs', { row }); return true;
   },
 
-  // ===== أسرع حذف جماعي =====
+  // ===== Fast bulk delete =====
   async deletePatientsInSection(section){
     if (!section) return false;
     await bridgeCallJSONP('deletePatientsInSection', { section });
     return true;
   },
-
   async bulkDeletePatients(codes){
     const list = Array.isArray(codes) ? codes.filter(Boolean) : [];
     if (!list.length) return true;
-    // دفعات أكبر (25) → نداءات قليلة جدًا
-    const batches = chunk(list, 25);
+    // استدعِ نقطة الخادم الدُفعي مباشرة، مع تقسيم عند الضرورة لطول الرابط
+    const batches = packRowsAdaptive(list.map(c=>[c])); // نحسب طول JSON بنفس المنهج
     for (const b of batches){
-      await bridgeCallJSONP('bulkDeletePatients', { codes: b });
+      const flat = b.map(x=>x[0]);
+      await bridgeCallJSONP('bulkDeletePatients', { codes: flat });
     }
     return true;
   }
