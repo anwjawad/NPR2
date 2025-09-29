@@ -18,7 +18,7 @@ import { Symptoms } from './symptoms.js';
 // ===== Defaults on first run =====
 const DEFAULTS = {
   spreadsheetId: '1l8UoblxznwV_zz7ZqnorOWZKfnmG3pZgVCT0DaSm0kU',
-  bridgeUrl: 'https://script.google.com/macros/s/AKfycbzathjloiJHn68LtVk9vdIx-Q8UiqHIvxBRxaJRdF-wzjuTqRFZx2pD7uHSlOwnNsA0/exec'
+  bridgeUrl: 'https://script.google.com/macros/s/AKfycbxjiRgEeKlRbJQz_NZ0YhE0RSubMNLhi-Ndzk1PUCm0cW1ZJgIfqZc7bWiDlXd6wA8/exec'
 };
 (function ensureDefaults(){
   if (!localStorage.getItem('pr.sheet'))  localStorage.setItem('pr.sheet',  DEFAULTS.spreadsheetId);
