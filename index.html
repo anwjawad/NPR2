@@ -4,6 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Palliative Rounds — Sheets-only, Modernized</title>
+
+  <!-- Inline favicon to avoid /favicon.ico 404 -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Crect rx='12' width='64' height='64' fill='%237c9cff'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial,Helvetica,sans-serif' font-weight='700' font-size='28' fill='white'%3EPR%3C/text%3E%3C/svg%3E" />
+
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -59,12 +63,13 @@
             <div class="tab" data-filter="done">Done</div>
           </div>
         </div>
+        <!-- Grid of cards -->
         <div id="patients-list"></div>
       </div>
     </main>
   </div>
 
-  <!-- Patient Modal (موجود مسبقًا — نُبقيه كما لديك) -->
+  <!-- Patient Modal -->
   <div class="modal hidden" id="patient-modal" data-code="">
     <div class="box">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -75,7 +80,6 @@
           <button class="pill" data-close-modal="patient-modal">Close</button>
         </div>
       </div>
-      <!-- لوحتك الحالية للـDashboard تُحقن هنا من dashboard.js -->
       <div id="dashboard-panel" data-empty="true"></div>
     </div>
   </div>
@@ -150,7 +154,19 @@
   <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <!-- Scripts -->
-  <script type="module" src="./app.js"></script>
+  <!-- Dynamic loader: tries ./app.js then ./js/app.js to avoid 404 regardless of project structure -->
+  <script type="module">
+    const candidates = ['./app.js','./js/app.js','app.js','js/app.js'];
+    (async () => {
+      let err;
+      for (const src of candidates) {
+        try { await import(src); return; }
+        catch (e) { err = e; }
+      }
+      console.error('Failed to load app.js from any known path', err);
+      const t = document.getElementById('toast');
+      if (t) { t.textContent = 'Failed to load scripts. Check app.js path.'; t.className = 'toast danger show'; }
+    })();
+  </script>
 </body>
 </html>
