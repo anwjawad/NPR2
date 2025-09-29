@@ -1,7 +1,8 @@
 // js/sheets.js
-// Google Apps Script Bridge client (no OAuth). Provides a simple API used by app.js.
-
-import { Utils } from './utils.js';
+// Google Apps Script Bridge client (JSONP-first to avoid CORS on GitHub Pages)
+// - Uses GET + JSONP for all actions (no preflight, no CORS issues).
+// - bulkInsertPatients is chunked to small batches to keep URL length safe.
+// - Schemas kept in sync with GAS.
 
 const TABS = { PATIENTS: 'Patients', ESAS: 'ESAS', CTCAE: 'CTCAE', LABS: 'Labs' };
 
@@ -35,121 +36,147 @@ function assertConfig(){
   if (!CONFIG.bridgeUrl)     throw new Error('Bridge URL is required.');
 }
 
-async function bridgeCall(action, payload={}){
-  assertConfig();
-  const body = JSON.stringify({
-    action,
-    spreadsheetId: CONFIG.spreadsheetId,
-    payload
+// ---------- JSONP core ----------
+function jsonp(url){
+  return new Promise((resolve, reject)=>{
+    const cbName = 'pr_cb_' + Math.random().toString(36).slice(2);
+    const sep = url.includes('?') ? '&' : '?';
+    const full = `${url}${sep}callback=${cbName}`;
+    const s = document.createElement('script');
+    const timer = setTimeout(()=>{
+      cleanup(); reject(new Error('Bridge timeout'));
+    }, 30000);
+
+    function cleanup(){
+      clearTimeout(timer);
+      try{ delete window[cbName]; }catch{}
+      if (s.parentNode) s.parentNode.removeChild(s);
+    }
+
+    window[cbName] = function(resp){
+      cleanup();
+      try{
+        if (!resp || resp.ok !== true) reject(new Error(resp && resp.error ? resp.error : 'Bridge error'));
+        else resolve(resp.data);
+      }catch(e){ reject(e); }
+    };
+
+    s.onerror = ()=>{ cleanup(); reject(new Error('Bridge network error')); };
+    s.src = full;
+    document.head.appendChild(s);
   });
-  const res = await fetch(CONFIG.bridgeUrl, {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json' },
-    body
-  });
-  if (!res.ok) throw new Error(`Bridge HTTP ${res.status}`);
-  const json = await res.json().catch(()=>({ ok:false, error:'Invalid JSON from bridge' }));
-  if (!json || json.ok !== true) throw new Error(json && json.error ? json.error : 'Bridge error');
-  return json.data;
 }
 
+function buildQuery(action, payload){
+  assertConfig();
+  const params = new URLSearchParams();
+  params.set('action', action);
+  params.set('spreadsheetId', CONFIG.spreadsheetId);
+  params.set('payload', JSON.stringify(payload || {}));
+  return `${CONFIG.bridgeUrl}?${params.toString()}`;
+}
+
+async function bridgeCallJSONP(action, payload){
+  const url = buildQuery(action, payload);
+  return jsonp(url);
+}
+
+// ---------- helpers ----------
 function toRowFromObject(obj, tabName){
   const cols = SCHEMA[tabName] || [];
   return cols.map(c => (obj && obj[c] != null) ? obj[c] : '');
 }
 
-function toObjectsFromArrays(tabName, rows){
-  const cols = SCHEMA[tabName] || [];
-  return (rows||[]).map(r=>{
-    const o={};
-    for (let i=0;i<cols.length;i++) o[cols[i]] = (r[i] ?? '');
-    return o;
-  });
+// split array into chunks of size n
+function chunk(arr, n){
+  const out=[]; for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n)); return out;
 }
 
+// ---------- Public API ----------
 export const Sheets = {
   async init(config){
     CONFIG = {
       spreadsheetId: config.spreadsheetId,
-      bridgeUrl: config.bridgeUrl,
+      bridgeUrl: (config.bridgeUrl || '').replace(/\/$/, ''), // drop trailing slash
       useOAuth: false
     };
-    // optional sanity
     return true;
   },
 
   async loadAll(){
-    const data = await bridgeCall('loadAll', {});
-    // already objects from GAS
-    return data;
+    return bridgeCallJSONP('loadAll', {});
   },
 
   async ensureSection(name){
-    await bridgeCall('ensureSection', {});
+    await bridgeCallJSONP('ensureSection', {});
     return true;
   },
 
   async createSection(name){
-    // (No-op on server; kept for API symmetry)
+    // no-op server side, kept for API symmetry
     return true;
   },
 
   async renameSection(oldName, newName){
-    await bridgeCall('renameSection', { oldName, newName });
+    await bridgeCallJSONP('renameSection', { oldName, newName });
     return true;
   },
 
   async deleteSection(name){
-    await bridgeCall('deleteSection', { name });
+    await bridgeCallJSONP('deleteSection', { name });
     return true;
   },
 
   async insertPatient(obj){
     const row = toRowFromObject(obj, TABS.PATIENTS);
-    await bridgeCall('insertPatient', { row });
+    await bridgeCallJSONP('insertPatient', { row });
     return true;
   },
 
   async bulkInsertPatients(objs){
+    // JSONP URLs لها حدود طول؛ نقسّم الإدخال إلى دفعات صغيرة (مثلاً 5 صفوف)
     const rows = (objs||[]).map(o => toRowFromObject(o, TABS.PATIENTS));
-    await bridgeCall('bulkInsertPatients', { rows });
+    const batches = chunk(rows, 5);
+    for (const batch of batches){
+      await bridgeCallJSONP('bulkInsertPatients', { rows: batch });
+    }
     return true;
   },
 
   async writePatientField(code, field, value){
-    await bridgeCall('writePatientField', { code, field, value });
+    await bridgeCallJSONP('writePatientField', { code, field, value });
     return true;
   },
 
   async writePatientFields(code, fields){
-    await bridgeCall('writePatientFields', { code, fields });
+    await bridgeCallJSONP('writePatientFields', { code, fields });
     return true;
   },
 
   async deletePatient(code){
-    await bridgeCall('deletePatient', { code });
+    await bridgeCallJSONP('deletePatient', { code });
     return true;
   },
 
   async writeESAS(code, obj){
     const row = toRowFromObject(obj, TABS.ESAS);
-    await bridgeCall('writeESAS', { row });
+    await bridgeCallJSONP('writeESAS', { row });
     return true;
   },
 
   async writeCTCAE(code, obj){
     const row = toRowFromObject(obj, TABS.CTCAE);
-    await bridgeCall('writeCTCAE', { row });
+    await bridgeCallJSONP('writeCTCAE', { row });
     return true;
   },
 
   async writeLabs(code, obj){
     const row = toRowFromObject(obj, TABS.LABS);
-    await bridgeCall('writeLabs', { row });
+    await bridgeCallJSONP('writeLabs', { row });
     return true;
   },
 
-  // Optional helpers used by app.js if available; safe fallbacks
+  // Stubs (ليست مفعّلة في GAS حالياً)
   async deletePatientsInSection(section){ return false; },
   async bulkDeletePatients(codes){ return false; }
 };
