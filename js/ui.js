@@ -1,5 +1,6 @@
 // js/ui.js
-// UI helpers: toasts, modals, modern confirm/prompt dialogs, small UX niceties.
+// UI helpers: toasts, modals, confirm/prompt dialogs, and small UX niceties.
+// Redesigned visually only. Public API remains stable for app.js and others.
 
 let BusRef = null;
 
@@ -13,27 +14,60 @@ const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const Toasts = (() => {
   const root = () => qs('#toast-root');
 
-  function makeToast(message, type = 'info', opts = {}) {
-    const div = document.createElement('div');
-    div.className = 'toast ' + (type || 'info');
-    if (opts.id) div.id = opts.id;
-
-    const text = document.createElement('div');
-    text.textContent = message || '';
-    div.appendChild(text);
-
-    root().appendChild(div);
-
-    const ttl = typeof opts.ttl === 'number' ? opts.ttl : (type === 'danger' ? 6000 : 3500);
-    if (ttl > 0) {
-      setTimeout(() => div.remove(), ttl);
+  function ensureRoot() {
+    if (!root()) {
+      const div = document.createElement('div');
+      div.id = 'toast-root';
+      document.body.appendChild(div);
     }
-    return div;
+  }
+
+  function makeToast(message, type = 'info', opts = {}) {
+    ensureRoot();
+    const host = root();
+    const t = document.createElement('div');
+    t.className = 'toast ' + (type || 'info');
+    const close = document.createElement('button');
+    close.className = 'icon-btn';
+    close.setAttribute('aria-label', 'Close');
+    close.innerHTML = '<span class="mi md">close</span>';
+
+    const msg = document.createElement('div');
+    msg.textContent = String(message ?? '');
+
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.gap = '10px';
+    row.appendChild(msg);
+    row.appendChild(close);
+    t.appendChild(row);
+
+    host.appendChild(t);
+
+    let closed = false;
+    function doClose() {
+      if (closed) return;
+      closed = true;
+      t.style.opacity = '0';
+      t.style.transform = 'translateY(6px)';
+      setTimeout(() => t.remove(), 220);
+    }
+
+    close.addEventListener('click', doClose);
+
+    const dur = Number(opts.duration || 3500);
+    if (dur > 0) setTimeout(doClose, dur);
+
+    return { close: doClose, el: t };
   }
 
   return {
     show: makeToast,
-    clearAll() { root().innerHTML = ''; }
+    success(msg, opts) { return makeToast(msg, 'success', opts); },
+    danger(msg, opts) { return makeToast(msg, 'danger', opts); },
+    warn(msg, opts) { return makeToast(msg, 'warn', opts); },
+    info(msg, opts) { return makeToast(msg, 'info', opts); },
   };
 })();
 
@@ -49,36 +83,26 @@ const Modals = (() => {
     document.body.style.overflow = 'hidden';
   }
   function unlockScroll() {
-    document.documentElement.style.overflow = '';
-    document.body.style.overflow = '';
+    if (openCount <= 0) {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
   }
 
   function open(id) {
     const el = document.getElementById(id);
     if (!el) return;
+
     el.classList.remove('hidden');
     openCount++;
     lockScroll();
 
-    // Focus first focusable
-    const focusable = qsa('button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])', el)
+    // focus first focusable
+    const focusable = qsa('button,[href],input,textarea,select,[tabindex]:not([tabindex="-1"])', el)
       .filter(n => !n.hasAttribute('disabled'));
     if (focusable[0]) focusable[0].focus();
 
-    // Close when clicking X buttons (already wired in app.js via [data-close-modal], but keep fallback)
-    qsa('[data-close-modal]', el).forEach(btn => {
-      btn.addEventListener('click', () => close(id), { once: true });
-    });
-
-    // Escape to close
-    const onKey = (ev) => {
-      if (ev.key === 'Escape') {
-        ev.preventDefault();
-        close(id);
-        document.removeEventListener('keydown', onKey);
-      }
-    };
-    document.addEventListener('keydown', onKey);
+    el.dispatchEvent(new CustomEvent('modal:open', { bubbles: true, detail: { id } }));
   }
 
   function close(id) {
@@ -87,147 +111,150 @@ const Modals = (() => {
     el.classList.add('hidden');
     openCount = Math.max(0, openCount - 1);
     if (openCount === 0) unlockScroll();
+    el.dispatchEvent(new CustomEvent('modal:close', { bubbles: true, detail: { id } }));
   }
 
-  // Build a lightweight, disposable modal for confirm/prompt
-  function buildDialog({ title, message, type = 'confirm', defaultValue = '' }) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'modal';
-    wrapper.role = 'dialog';
-    wrapper.ariaModal = 'true';
+  // Close by clicking backdrop or [data-close-modal]
+  function setupDelegation() {
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-close-modal]');
+      if (btn) {
+        const id = btn.getAttribute('data-close-modal');
+        if (id) close(id);
+        return;
+      }
 
-    const card = document.createElement('div');
-    card.className = 'modal-card';
-    card.style.maxWidth = '520px';
+      const modal = e.target.closest('.modal');
+      if (modal && !e.target.closest('.modal-card')) {
+        // click on backdrop
+        // find id
+        if (modal.id) close(modal.id);
+      }
+    });
 
-    const header = document.createElement('div');
-    header.className = 'modal-header';
-
-    const h3 = document.createElement('h3');
-    h3.textContent = title || (type === 'prompt' ? 'Input' : 'Confirm');
-
-    const x = document.createElement('button');
-    x.className = 'icon-btn';
-    x.textContent = '✕';
-    x.setAttribute('aria-label', 'Close');
-
-    header.appendChild(h3);
-    header.appendChild(x);
-
-    const body = document.createElement('div');
-    body.className = 'modal-body';
-
-    const msg = document.createElement('div');
-    msg.textContent = message || '';
-    msg.className = 'muted';
-
-    body.appendChild(msg);
-
-    let input = null;
-    if (type === 'prompt') {
-      const field = document.createElement('label');
-      field.className = 'field';
-      const lab = document.createElement('span');
-      lab.className = 'label';
-      lab.textContent = 'Value';
-      input = document.createElement('input');
-      input.type = 'text';
-      input.value = defaultValue || '';
-      field.appendChild(lab);
-      field.appendChild(input);
-      body.appendChild(field);
-    }
-
-    const footer = document.createElement('div');
-    footer.className = 'modal-footer';
-
-    const cancel = document.createElement('button');
-    cancel.className = 'btn btn-ghost';
-    cancel.textContent = 'Cancel';
-
-    const ok = document.createElement('button');
-    ok.className = 'btn btn-primary';
-    ok.textContent = type === 'prompt' ? 'OK' : 'Confirm';
-
-    footer.appendChild(cancel);
-    footer.appendChild(ok);
-
-    card.appendChild(header);
-    card.appendChild(body);
-    card.appendChild(footer);
-
-    wrapper.appendChild(card);
-    document.body.appendChild(wrapper);
-
-    // interactions
-    const closeDialog = () => {
-      wrapper.remove();
-      // unlock scroll if no other modal visible
-      // Note: main modal manager uses openCount, but here dialogs are independent; safe unlock.
-      document.documentElement.style.overflow = '';
-      document.body.style.overflow = '';
-    };
-
-    x.addEventListener('click', closeDialog);
-    cancel.addEventListener('click', closeDialog);
-
-    return {
-      el: wrapper,
-      okBtn: ok,
-      input,
-      open: () => {
-        // lock scroll
-        document.documentElement.style.overflow = 'hidden';
-        document.body.style.overflow = 'hidden';
-        // focus
-        (input || ok).focus();
-
-        // Esc to close
-        const onKey = (ev) => {
-          if (ev.key === 'Escape') {
-            ev.preventDefault();
-            closeDialog();
-            document.removeEventListener('keydown', onKey);
-          }
-          if (type === 'prompt' && ev.key === 'Enter' && document.activeElement === input) {
-            ok.click();
-          }
-        };
-        document.addEventListener('keydown', onKey);
-      },
-      close: closeDialog
-    };
-  }
-
-  async function confirm(message, title = 'Confirm') {
-    return new Promise((resolve) => {
-      const dlg = buildDialog({ title, message, type: 'confirm' });
-      dlg.okBtn.addEventListener('click', () => {
-        dlg.close();
-        resolve(true);
-      });
-      // if user clicks outside card, don't close (to avoid accidental dismiss)
-      dlg.el.addEventListener('click', (e) => {
-        if (e.target === dlg.el) { /* ignore click outside */ }
-      });
-      dlg.open();
-    }).catch(() => false);
-  }
-
-  async function prompt(message, defaultValue = '', title = 'Input') {
-    return new Promise((resolve) => {
-      const dlg = buildDialog({ title, message, type: 'prompt', defaultValue });
-      dlg.okBtn.addEventListener('click', () => {
-        const val = dlg.input?.value ?? '';
-        dlg.close();
-        resolve(val);
-      });
-      dlg.open();
+    // ESC to close the last opened modal (heaviest)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const opened = qsa('.modal:not(.hidden)');
+        const last = opened[opened.length - 1];
+        if (last) {
+          e.stopPropagation();
+          close(last.id);
+        }
+      }
     });
   }
 
-  return { open, close, confirm, prompt };
+  /* ---- Simple dialogs (confirm/prompt) ---- */
+  function confirm(message, title = 'Confirm') {
+    return new Promise((resolve) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'modal';
+      wrapper.innerHTML = `
+        <div class="modal-card" role="dialog" aria-modal="true" style="max-width:520px">
+          <div class="modal-header">
+            <div class="card-title"><span class="mi md">help</span>&nbsp; ${title}</div>
+            <button class="icon-btn xbtn" aria-label="Close"><span class="mi md">close</span></button>
+          </div>
+          <div class="modal-body modal-body-pad">
+            <div class="small" style="font-size:15px">${escapeHtml(String(message ?? 'Are you sure?'))}</div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost cancel" type="button">Cancel</button>
+            <button class="btn btn-primary ok" type="button">OK</button>
+          </div>
+        </div>`;
+      document.body.appendChild(wrapper);
+      lockScroll();
+
+      const ok = wrapper.querySelector('.ok');
+      const cancel = wrapper.querySelector('.cancel');
+      const x = wrapper.querySelector('.xbtn');
+
+      function done(val) {
+        wrapper.remove();
+        unlockScroll();
+        resolve(val);
+      }
+      ok.addEventListener('click', () => done(true));
+      cancel.addEventListener('click', () => done(false));
+      x.addEventListener('click', () => done(false));
+
+      // escape closes
+      setTimeout(() => ok.focus(), 0);
+      wrapper.addEventListener('click', (e) => {
+        if (e.target === wrapper) done(false);
+      });
+      document.addEventListener('keydown', function onKey(e) {
+        if (e.key === 'Escape') { e.stopPropagation(); done(false); document.removeEventListener('keydown', onKey); }
+        if (e.key === 'Enter') { e.preventDefault(); done(true); document.removeEventListener('keydown', onKey); }
+      });
+    });
+  }
+
+  function prompt(message, defaultValue = '') {
+    return new Promise((resolve) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'modal';
+      wrapper.innerHTML = `
+        <div class="modal-card" role="dialog" aria-modal="true" style="max-width:560px">
+          <div class="modal-header">
+            <div class="card-title"><span class="mi md">edit_note</span>&nbsp; Prompt</div>
+            <button class="icon-btn xbtn" aria-label="Close"><span class="mi md">close</span></button>
+          </div>
+          <div class="modal-body modal-body-pad">
+            <div class="field">
+              <span class="label">${escapeHtml(String(message ?? 'Enter a value'))}</span>
+              <input class="pinput" type="text" value="${escapeHtmlAttr(String(defaultValue ?? ''))}" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost cancel" type="button">Cancel</button>
+            <button class="btn btn-primary ok" type="button">OK</button>
+          </div>
+        </div>`;
+      document.body.appendChild(wrapper);
+      lockScroll();
+
+      const ok = wrapper.querySelector('.ok');
+      const cancel = wrapper.querySelector('.cancel');
+      const x = wrapper.querySelector('.xbtn');
+      const input = wrapper.querySelector('.pinput');
+
+      function done(val) {
+        const out = val ? input.value : null;
+        wrapper.remove();
+        unlockScroll();
+        resolve(out);
+      }
+      ok.addEventListener('click', () => done(true));
+      cancel.addEventListener('click', () => done(false));
+      x.addEventListener('click', () => done(false));
+
+      setTimeout(() => input.focus(), 0);
+      wrapper.addEventListener('click', (e) => {
+        if (e.target === wrapper) done(false);
+      });
+      document.addEventListener('keydown', function onKey(e) {
+        if (e.key === 'Escape') { e.stopPropagation(); done(false); document.removeEventListener('keydown', onKey); }
+        if (e.key === 'Enter') { e.preventDefault(); done(true); document.removeEventListener('keydown', onKey); }
+      });
+    });
+  }
+
+  return { open, close, setupDelegation, confirm, prompt };
 })();
+
+/* ===========================
+   Helpers
+   =========================== */
+
+function escapeHtml(str) {
+  return str.replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+function escapeHtmlAttr(str) {
+  return str.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
 
 /* ===========================
    Public UI API
@@ -235,30 +262,33 @@ const Modals = (() => {
 
 export const UI = {
   init(Bus) {
-    BusRef = Bus;
+    BusRef = Bus || null;
 
-    // Close modals via [data-close-modal] attribute (delegated in app.js as well)
-    document.body.addEventListener('click', (e) => {
-      const target = e.target.closest('[data-close-modal]');
-      if (target) {
-        const id = target.getAttribute('data-close-modal');
-        if (id) Modals.close(id);
-      }
-    });
+    // Wire open buttons if app logic didn't already
+    const openSettings = qs('#open-settings');
+    if (openSettings) {
+      openSettings.addEventListener('click', () => Modals.open('settings-modal'));
+    }
+    const openImporter = qs('#open-importer');
+    if (openImporter) {
+      openImporter.addEventListener('click', () => Modals.open('importer-modal'));
+    }
 
-    // Accessibility: focus outline on keyboard nav
-    let usingKeyboard = false;
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Tab') usingKeyboard = true;
-      if (usingKeyboard) document.documentElement.classList.add('kbd-nav');
-    });
-    window.addEventListener('mousedown', () => {
-      usingKeyboard = false;
-      document.documentElement.classList.remove('kbd-nav');
-    });
+    // Close delegation (backdrop + [data-close-modal])
+    Modals.setupDelegation();
+
+    // Forward bus notifications to fancy toasts if Bus offers 'on'
+    try {
+      Bus?.on?.('toast', ({ message, type, opts }) => {
+        Toasts.show(message, type, opts);
+      });
+    } catch (_) {}
   },
 
   toast(message, type = 'info', opts = {}) {
+    return Toasts.show(message, type, opts);
+  },
+  notify(message, type = 'info', opts = {}) {
     return Toasts.show(message, type, opts);
   },
 
