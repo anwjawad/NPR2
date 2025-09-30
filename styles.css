@@ -144,7 +144,13 @@ body.theme-light #topbar{background:rgba(255,255,255,.7); backdrop-filter:satura
 }
 #section-ops .btn{margin-left:8px}
 
-#columns{display:grid; grid-template-columns: 370px 1fr; gap:16px; padding:16px}
+/* ===== Columns: اجعل المحتوى عمود واحد يملأ الصفحة ===== */
+#columns{
+  display:grid;
+  grid-template-columns: 1fr;   /* <-- كان 370px 1fr */
+  gap:16px;
+  padding:16px;
+}
 
 /* ===== Cards ===== */
 .card{
@@ -192,7 +198,6 @@ body.theme-light #topbar{background:rgba(255,255,255,.7); backdrop-filter:satura
 .mono{font-family:var(--mono)}
 
 /* ===== Patients list ===== */
-/* (كان سابقًا قائمة داخل بطاقة؛ الآن سنحوّله إلى grid مربعات) */
 #patients-col .list{max-height: calc(100vh - 210px); overflow:auto; padding-right:4px}
 
 /* Rich patient card */
@@ -260,7 +265,6 @@ body.theme-light .field input, body.theme-light .field textarea{ background:#fff
 body.theme-light #bio-grid .field{background:#f7f8ff}
 
 /* ===== Unified Symptoms (ESAS + CTCAE) ===== */
-/* These styles also enhance legacy ESAS/CTCAE classes if rendered */
 .score-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; }
 @media (min-width:1200px){ .score-grid{grid-template-columns: repeat(3, minmax(0,1fr));} }
 
@@ -274,13 +278,11 @@ body.theme-light .score-item{ background:#f7f8ff; }
 .score-title{font-weight:700}
 .score-select{display:flex; flex-wrap:wrap; gap:6px}
 
-/* Legacy 0..N buttons (kept) */
 .score-btn{
   padding:6px 9px; border-radius:9px; background:#0f1534; border:1px solid #2a335f; min-width:34px; text-align:center; cursor:pointer;
 }
 .score-btn.active{background:#1f2b66; border-color:#5063c9}
 
-/* Tag-like symptom toggle (used by unified symptoms module) */
 .symptom-chip{
   display:inline-flex; align-items:center; gap:6px;
   padding:8px 10px; border-radius:999px; cursor:pointer; user-select:none;
@@ -289,7 +291,6 @@ body.theme-light .score-item{ background:#f7f8ff; }
 .symptom-chip:hover{transform:translateY(-1px)}
 .symptom-chip.active{ background:#1f2b66; border-color:#5063c9; box-shadow: var(--elev-1); }
 
-/* Inline note shown only when selected */
 .score-note{ margin-top:8px }
 .score-note textarea{
   width:100%; background:#0f1534; border:1px dashed #2e3a7a; padding:8px 10px; border-radius:10px; color:var(--text);
@@ -308,13 +309,11 @@ body.theme-light .score-item{ background:#f7f8ff; }
   width:100%; background:#0f1430; border:1px solid #2b3362; border-radius:10px; padding:8px 10px; color:var(--text)
 }
 
-/* Abnormal coloring */
 .lab.abnormal-high{border-color:#6b0b22; box-shadow:0 0 0 1px rgba(255,0,55,.25) inset}
 .lab.abnormal-high .lab-name{color:#ff9fb0; font-weight:800}
 .lab.abnormal-low{border-color:#0b3f6b; box-shadow:0 0 0 1px rgba(80,180,255,.25) inset}
 .lab.abnormal-low .lab-name{color:#9fd2ff; font-weight:800}
 
-/* Labs summary chips */
 .chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px}
 .chips .chip.high{background:#341323; border-color:#5e1733; color:#ff9fb0}
 .chips .chip.low{background:#0d2a44; border-color:#10476f; color:#bfe0ff}
@@ -327,8 +326,8 @@ body.theme-light .score-item{ background:#f7f8ff; }
 }
 .tab.active{background:#26306a; border-color:#3a4aa6}
 .tabpanes{margin-top:10px}
-.tabpane{display:none}
 .tabpane.active{display:block}
+.tabpane{display:none}
 
 /* ===== Toasts ===== */
 #toast-root{
@@ -385,7 +384,7 @@ body.theme-light .score-item{ background:#f7f8ff; }
 }
 #csv-preview table{
   width:max(780px, 100%);
-  white-space:nowrap; /* horizontal scroll when needed */
+  white-space:nowrap;
 }
 
 /* ===== Misc ===== */
@@ -432,12 +431,9 @@ body::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius:9
    Patients grid redesign (squares-like tiles)
    ========================================== */
 #patients-col #patients-list.list{
-  /* شبكة مرنة: مربعات تتكيّف مع العرض */
   display:grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap:14px;
-
-  /* إلغاء سلوك القائمة الطويلة داخل بطاقة */
   max-height:none;
   overflow:visible;
   padding-right:0;
@@ -445,21 +441,12 @@ body::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius:9
 }
 
 #patients-col .row.patient-card{
-  /* كروت مربعة/مستطيلة قصيرة */
-  margin:0;                 /* إزالة هوامش القائمة القديمة */
-  min-height: 170px;        /* ارتفاع مريح يشبه المربعات */
+  margin:0;
+  min-height: 170px;
   display:flex;
   flex-direction:column;
   justify-content:space-between;
 }
 
-#patients-col .patient-card .row-header{
-  /* شدّ العنوان للأعلى */
-  margin-bottom:6px;
-}
-
-#patients-col .patient-card .row-tags{
-  margin-top:6px;
-}
-
-/* عندما تكون الشاشة ضيّقة جداً—عمود واحد تلقائياً بفضل auto-fill */
+#patients-col .patient-card .row-header{ margin-bottom:6px; }
+#patients-col .patient-card .row-tags{ margin-top:6px; }
