@@ -1,11 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Palliative Rounds — Sheets-only</title>
   <link rel="stylesheet" href="styles.css" />
+  <!-- Icons (visual only) -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:wght@300..700" rel="stylesheet">
   <link rel="icon" href="data:,">
+  <style>
+    /* tiny helpers for inline icons */
+    .mi{font-family:"Material Symbols Rounded"; font-variation-settings:'FILL' 0,'wght' 500,'GRAD' 0,'opsz' 24; font-style:normal; display:inline-flex; align-items:center; justify-content:center; line-height:1; vertical-align:middle}
+    .mi.sm{font-variation-settings:'FILL' 0,'wght' 500,'GRAD' 0,'opsz' 20; font-size:18px}
+    .mi.md{font-size:20px}
+    .mi.lg{font-size:22px}
+  </style>
 </head>
 <body>
   <div id="app">
@@ -14,37 +24,24 @@
     <aside id="sidebar">
       <div class="brand">
         <div class="logo">PR</div>
-        <div class="titles">
+        <div>
           <div class="title">Palliative Rounds</div>
-          <div class="subtitle">Sheets-only, Modernized</div>
+          <div class="subtitle">Sheets-only</div>
         </div>
       </div>
 
       <div class="section">
-        <div class="section-title">SECTIONS</div>
-        <div id="sections-list" class="sections"></div>
-        <button id="btn-add-section" class="btn w100">+ Add Section</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">ACTIONS</div>
-        <button id="btn-new-patient" class="btn btn-primary w100">+ New Patient</button>
-        <button id="btn-import" class="btn w100">Import CSV</button>
-        <button id="btn-export-template" class="btn w100">Export CSV Template</button>
-        <button id="btn-delete-all-pats" class="btn btn-danger w100">Delete All Patients in Section</button>
-        <button id="btn-refresh" class="btn w100">Refresh</button>
-      </div>
-
-      <div class="section small">
-        <div class="section-title">SYNC</div>
-        <div id="sync-indicator">
-          <span class="dot dot-green"></span> <span id="sync-text">Idle</span><br/>
-          <span class="muted">Mode: Apps Script Bridge</span>
+        <div class="section-title">Navigation</div>
+        <div id="sections-root" class="sections">
+          <!-- Filled by app.js with .pill buttons -->
         </div>
       </div>
 
       <div class="section">
-        <button id="open-settings" class="btn w100" type="button">Settings</button>
+        <div class="section-title">Quick actions</div>
+        <button id="open-importer" class="btn w100" type="button"><span class="mi md">upload</span>&nbsp; Import CSV</button>
+        <div style="height:8px"></div>
+        <button id="open-settings" class="btn w100" type="button"><span class="mi md">tune</span>&nbsp; Settings</button>
       </div>
     </aside>
 
@@ -52,190 +49,252 @@
     <main id="main">
       <!-- Topbar -->
       <div id="topbar">
+        <span class="mi md" aria-hidden="true">search</span>
         <input id="search" type="search" placeholder="Search patients…" />
-        <div id="section-ops">
-          <span id="active-section-label">Section: <strong id="active-section-name">Default</strong></span>
-          <button id="btn-rename-section" class="btn btn-ghost">Rename Section</button>
-          <button id="btn-delete-section" class="btn btn-danger btn-ghost">Delete Section</button>
+        <div id="section-ops" class="actions-row">
+          <span id="active-section-label" class="muted small">Section: <strong id="active-section-name">Default</strong></span>
+          <button id="add-patient" class="btn btn-primary" type="button"><span class="mi md">person_add</span>&nbsp; New Patient</button>
         </div>
       </div>
 
+      <!-- Two columns -->
       <div id="columns">
-        <!-- Patients list -->
+        <!-- Patients -->
         <section id="patients-col">
           <div class="card">
             <div class="card-head">
-              <div class="card-title">Patients</div>
-              <div class="tabs small">
-                <button data-filter="all" class="tab active">All</button>
-                <button data-filter="open" class="tab">Open</button>
-                <button data-filter="done" class="tab">Done</button>
+              <div class="card-title"><span class="mi md">groups</span>&nbsp; Patients</div>
+              <div class="actions-row">
+                <button id="patients-filter" class="btn btn-ghost" type="button"><span class="mi sm">filter_alt</span>&nbsp; Filter</button>
+                <button id="patients-sort" class="btn btn-ghost" type="button"><span class="mi sm">sort</span>&nbsp; Sort</button>
               </div>
             </div>
-            <div id="patients-list" class="list"></div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+              <div class="tab active" data-tab="tab-all"><span class="mi sm">view_cozy</span>&nbsp; All</div>
+              <div class="tab" data-tab="tab-open"><span class="mi sm">pending</span>&nbsp; Open</div>
+              <div class="tab" data-tab="tab-done"><span class="mi sm">check_circle</span>&nbsp; Done</div>
+            </div>
+
+            <div class="tabpanes">
+              <div id="tab-all" class="tabpane active">
+                <div class="list">
+                  <!-- patient rows (.row.patient-card) rendered by app.js / patients.js -->
+                </div>
+              </div>
+              <div id="tab-open" class="tabpane">
+                <div class="list"></div>
+              </div>
+              <div id="tab-done" class="tabpane">
+                <div class="list"></div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <!-- Dashboard column not used (dashboard is in modal) -->
-        <section id="dashboard-col" style="display:none;"></section>
+        <!-- Dashboard -->
+        <section id="dashboard-col">
+          <div id="dashboard-panel" class="card" data-empty="true">
+            <div class="card-head">
+              <div class="card-title"><span class="mi md">dashboard</span>&nbsp; Dashboard</div>
+              <div class="actions-row">
+                <button id="export-summary" class="btn btn-ghost" type="button"><span class="mi sm">description</span>&nbsp; Export</button>
+                <button id="clear-dashboard" class="btn btn-danger" type="button"><span class="mi sm">delete</span></button>
+              </div>
+            </div>
+
+            <!-- Summary grids -->
+            <div class="section-block">
+              <div class="block-head">
+                <div class="block-title"><span class="mi sm">assignment</span>&nbsp; Bio &amp; HPI</div>
+              </div>
+              <div id="bio-grid" class="grid grid-2">
+                <!-- Filled by dashboard.js -->
+              </div>
+            </div>
+
+            <div class="section-block">
+              <div class="block-head">
+                <div class="block-title"><span class="mi sm">monitor_heart</span>&nbsp; Symptoms</div>
+              </div>
+              <div id="symptoms-grid" class="score-grid">
+                <!-- ESAS & CTCAE summary -->
+              </div>
+            </div>
+
+            <div class="section-block">
+              <div class="block-head">
+                <div class="block-title"><span class="mi sm">science</span>&nbsp; Labs</div>
+              </div>
+              <div id="labs-grid" class="labs-grid"></div>
+              <div class="chips" id="labs-chips"></div>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
-
   </div>
 
   <!-- Toast root -->
   <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Import CSV modal -->
-  <div id="import-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>Import CSV</h3>
-        <button class="icon-btn" data-close-modal="import-modal" aria-label="Close">✕</button>
+        <div id="settings-title" class="card-title"><span class="mi md">tune</span>&nbsp; Settings</div>
+        <button class="icon-btn" data-close-modal="settings-modal" aria-label="Close"><span class="mi md">close</span></button>
       </div>
-      <div class="modal-body">
-        <input id="csv-file-input" type="file" accept=".csv,text/csv" />
-        <div id="csv-preview" style="margin-top:12px;"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" data-close-modal="import-modal">Cancel</button>
-        <button id="btn-import-confirm" class="btn btn-primary">Import</button>
-      </div>
-    </div>
-  </div>
+      <div class="modal-body modal-body-pad">
+        <div class="grid grid-2">
+          <div class="field">
+            <span class="label">Theme</span>
+            <div class="actions-row" id="theme-picker">
+              <label class="row-chip"><input type="radio" name="theme" value="midnight" checked>&nbsp; Midnight</label>
+              <label class="row-chip"><input type="radio" name="theme" value="light">&nbsp; Light</label>
+              <label class="row-chip"><input type="radio" name="theme" value="aurora">&nbsp; Aurora</label>
+            </div>
+            <div class="muted small">التبديل فوري ويُحفظ محليًا (لا يغيّر أي منطق).</div>
+          </div>
 
-  <!-- Settings modal -->
-  <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3>Settings</h3>
-        <button class="icon-btn" data-close-modal="settings-modal" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body">
-        <label class="field">
-          <span class="label">Spreadsheet ID</span>
-          <input id="set-spreadsheet-id" type="text" placeholder="1AbCdEFGhIJKL..." />
-        </label>
-        <label class="field">
-          <span class="label">Apps Script Web App URL (Bridge)</span>
-          <input id="set-bridge-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" />
-        </label>
-        <label class="field">
-          <span class="label">AI Proxy Endpoint (optional)</span>
-          <input id="set-ai-endpoint" type="url" placeholder="https://your-proxy.example/summarize" />
-        </label>
+          <div class="field">
+            <span class="label">Density</span>
+            <div class="actions-row">
+              <label class="row-chip"><input type="radio" name="density" value="cozy" checked>&nbsp; Cozy</label>
+              <label class="row-chip"><input type="radio" name="density" value="compact">&nbsp; Compact</label>
+            </div>
+          </div>
+        </div>
+
+        <hr style="opacity:.15; border:none; border-top:1px solid var(--border); margin:14px 0" />
+
+        <div class="grid grid-2">
+          <label class="field">
+            <span class="label">Spreadsheet ID</span>
+            <input id="set-spreadsheet-id" type="text" placeholder="1AbCdEFGhIJKL..." />
+          </label>
+          <label class="field">
+            <span class="label">Apps Script Web App URL (Bridge)</span>
+            <input id="set-bridge-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" />
+          </label>
+        </div>
+
+        <div class="grid grid-2">
+          <label class="field">
+            <span class="label">AI Proxy Endpoint (optional)</span>
+            <input id="set-ai-endpoint" type="url" placeholder="https://your-proxy.example/summarize" />
+          </label>
+          <div class="field">
+            <span class="label">Notes</span>
+            <textarea id="settings-notes" rows="3" placeholder="Anything else…"></textarea>
+          </div>
+        </div>
+
         <div class="muted small">Leave OAuth off. All writes go through the Apps Script Bridge.</div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" data-close-modal="settings-modal">Close</button>
-        <button id="btn-settings-save" class="btn btn-primary">Save</button>
+        <button class="btn btn-ghost" data-close-modal="settings-modal" type="button">Close</button>
       </div>
     </div>
   </div>
 
-  <!-- Patient Dashboard modal (fullscreen) -->
-  <div id="patient-modal" class="modal hidden" role="dialog" aria-modal="true" data-code="">
-    <div class="modal-card modal-card-full">
+  <!-- IMPORTER MODAL -->
+  <div id="importer-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="importer-title">
+    <div class="modal-card">
       <div class="modal-header">
-        <h3 id="patient-modal-title">Patient Dashboard</h3>
-        <button class="icon-btn" data-close-modal="patient-modal" aria-label="Close">✕</button>
+        <div id="importer-title" class="card-title"><span class="mi md">upload</span>&nbsp; Import CSV</div>
+        <button class="icon-btn" data-close-modal="importer-modal" aria-label="Close"><span class="mi md">close</span></button>
       </div>
       <div class="modal-body modal-body-pad">
-        <div class="card">
-          <div class="card-head">
-            <div id="dashboard-title" class="card-title">Dashboard</div>
-            <div class="actions-row">
-              <button id="btn-mark-done" class="btn btn-ghost">Mark Done</button>
-              <button id="btn-delete-patient" class="btn btn-danger btn-ghost">Delete Patient</button>
-              <button id="btn-duplicate" class="btn btn-ghost">Duplicate</button>
-              <button id="btn-ai" class="btn btn-primary">AI Summary</button>
-            </div>
+        <div class="grid grid-2">
+          <label class="field">
+            <span class="label">CSV file</span>
+            <input id="csv-file" type="file" accept=".csv,text/csv" />
+          </label>
+          <div class="field">
+            <span class="label">Delimiter</span>
+            <input id="csv-delim" type="text" value="," />
           </div>
-
-          <div id="dashboard-panel" data-empty="true">
-            <div class="empty">
-              <div class="dots"></div>
-              <div class="empty-text">Select a patient</div>
-              <div class="empty-sub">Pick a patient on the left to view details, symptoms, and labs.</div>
-            </div>
-
-            <!-- BIO -->
-            <div class="section-block">
-              <div class="block-head">
-                <div class="block-title">Bio</div>
-                <div class="muted small" id="bio-updated"></div>
-              </div>
-              <div id="bio-grid" class="grid grid-2"></div>
-            </div>
-
-            <!-- HPI -->
-            <div class="section-block">
-              <div class="block-head"><div class="block-title">HPI</div></div>
-              <div class="grid grid-2">
-                <label class="field">
-                  <span class="label">Cause of admission</span>
-                  <textarea id="hpi-diagnosis" rows="2" placeholder="Cause of admission…"></textarea>
-                </label>
-                <label class="field">
-                  <span class="label">HPI Initial</span>
-                  <textarea id="hpi-initial" rows="2" placeholder="Initial HPI…"></textarea>
-                </label>
-                <label class="field">
-                  <span class="label">HPI Previous</span>
-                  <textarea id="hpi-previous" rows="2" placeholder="Previous HPI…"></textarea>
-                </label>
-                <label class="field">
-                  <span class="label">HPI Current</span>
-                  <textarea id="hpi-current" rows="2" placeholder="Current HPI…"></textarea>
-                </label>
-              </div>
-            </div>
-
-            <div class="section-block">
-              <div class="grid grid-2">
-                <label class="field">
-                  <span class="label">Patient Assessment</span>
-                  <textarea id="patient-assessment" rows="3" placeholder="Assessment…"></textarea>
-                </label>
-                <label class="field">
-                  <span class="label">Medication List</span>
-                  <textarea id="medication-list" rows="3" placeholder="Medications…"></textarea>
-                </label>
-              </div>
-              <label class="field">
-                <span class="label">Latest Notes</span>
-                <textarea id="latest-notes" rows="3" placeholder="Notes…"></textarea>
-              </label>
-            </div>
-
-            <!-- Unified Patient Symptoms -->
-            <div class="section-block">
-              <div class="block-head">
-                <div class="block-title">Patient’s Symptoms</div>
-                <div class="muted small" id="symptoms-updated"></div>
-              </div>
-              <div id="symptoms-grid" class="score-grid"></div>
-            </div>
-
-            <!-- Labs -->
-            <div class="section-block">
-              <div class="block-head">
-                <div class="block-title">Labs</div>
-                <div class="muted small" id="labs-updated"></div>
-              </div>
-              <div id="labs-summary" class="chips"></div>
-              <div id="labs-grid" class="labs-grid"></div>
-            </div>
+        </div>
+        <div class="section-block">
+          <div class="block-head">
+            <div class="block-title">Preview</div>
+          </div>
+          <div id="csv-preview" class="scroll">
+            <!-- table preview by importer.js -->
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" data-close-modal="patient-modal">Close</button>
+        <button id="import-csv" class="btn btn-primary" type="button">Import</button>
+        <button class="btn btn-ghost" data-close-modal="importer-modal" type="button">Close</button>
       </div>
     </div>
   </div>
 
-  <!-- Entry point: App.start -->
+  <!-- PATIENT FULLSCREEN MODAL -->
+  <div id="patient-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="patient-title">
+    <div class="modal-card modal-card-full">
+      <div class="modal-header">
+        <div id="patient-title" class="card-title"><span class="mi md">person</span>&nbsp; Patient</div>
+        <button class="icon-btn" data-close-modal="patient-modal" aria-label="Close"><span class="mi md">close</span></button>
+      </div>
+      <div class="modal-body modal-body-pad">
+        <!-- dashboard.js will render patient sections/grids here -->
+        <div id="patient-content" class="grid grid-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal="patient-modal" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Theme/Density small script (visual only; no app logic touched) -->
+  <script>
+    (function(){
+      const applyTheme = (t) => {
+        if(!t) return;
+        document.body.setAttribute('data-theme', t);
+        try{ localStorage.setItem('pr.theme', t); }catch(e){}
+      };
+      const saved = (()=>{
+        try{ return localStorage.getItem('pr.theme'); }catch(e){ return null; }
+      })();
+      if(saved){ document.body.setAttribute('data-theme', saved); }
+      // init radios when settings opens
+      document.addEventListener('click', (e)=>{
+        const btn = e.target.closest('#open-settings');
+        if(btn){
+          const t = document.body.getAttribute('data-theme') || 'midnight';
+          const wrap = document.getElementById('theme-picker');
+          if(wrap){
+            const radios = wrap.querySelectorAll('input[type="radio"][name="theme"]');
+            radios.forEach(r=> r.checked = (r.value === t));
+          }
+        }
+      });
+      // listen to theme radio changes
+      document.addEventListener('change', (e)=>{
+        const r = e.target;
+        if(r && r.name === 'theme'){ applyTheme(r.value); }
+      });
+      // density (purely visual, adds data-density attr for CSS if needed)
+      document.addEventListener('change', (e)=>{
+        const r = e.target;
+        if(r && r.name === 'density'){
+          document.documentElement.setAttribute('data-density', r.value);
+          try{ localStorage.setItem('pr.density', r.value); }catch(_){}
+        }
+      });
+      const dSaved = (()=>{
+        try{ return localStorage.getItem('pr.density'); }catch(e){ return null; }
+      })();
+      if(dSaved){ document.documentElement.setAttribute('data-density', dSaved); }
+    })();
+  </script>
+
+  <!-- Entry point: App.start (paths preserved exactly) -->
   <script type="module">
     import { App } from './js/app.js';
     App.start();
